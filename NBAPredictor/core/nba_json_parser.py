@@ -6,6 +6,8 @@ import os
 import re
 from typing import List, AnyStr, Dict, Any
 
+
+
 from game import Game
 from game_period import GamePeriod, convert_to_game_period
 from league import League
@@ -15,14 +17,17 @@ from positions import Position, convert_to_position
 from team import Team
 
 
+
 class NBAJsonParser:
 
     def __init__(self, nba_json_dir: str):
         self.nba_json_dir: str = nba_json_dir
+        self.games =[]
+        self.leauge = League()
         assert os.path.isdir(self.nba_json_dir), f"{self.nba_json_dir} is not a valid directory"
-        self.games: List[Game] = list()
-        for game_file in self.get_all_game_files():
-            self.games.append(self.convert_game_dict_to_core_objects(self.parse_json_file(game_file)))
+#        for game_file in self.get_all_game_files():
+#            generate_player_object(self.leauge, self.parse_json_file(game_file))
+
 
     def get_seasons(self) -> List[str]:
         valid_season_name: AnyStr = r"20[0-1][-0-9]-20[0-1][-0-9]"
