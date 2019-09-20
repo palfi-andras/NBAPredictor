@@ -2,8 +2,10 @@ import os
 
 from tap import Tap
 
-from core.league import load_league
-from core.nba_json_parser import NBAJsonParser
+from league import load_league
+from nba_json_parser import NBAJsonParser
+from read_game import ReadGame
+from tensorflow_operations import TensorflowOperations
 
 
 class NBAPredictorArguments(Tap):
@@ -21,8 +23,12 @@ if __name__ == '__main__':
         args.rebuild = True
     if args.rebuild:
         league = NBAJsonParser(args.dir).generate_league_object()
-        print()
         league.save_league(args.league_save)
     else:
         league = load_league(args.league_save)
-        league.save_league(args.league_save)
+        game = league.get_random_game('2017-2018')
+        parsed_game = ReadGame(game)
+        tfops = TensorflowOperations()
+        dataset = tfops.get_tensorflow_dataset(parsed_game)
+
+        print()

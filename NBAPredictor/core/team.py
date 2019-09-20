@@ -13,3 +13,4 @@ class Team:
         self.scores = scores
         self.team_stats = team_stats
         self.players = players
+

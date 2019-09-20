@@ -1,5 +1,6 @@
 import pickle
 from typing import Dict, List, Set
+from random import randint
 
 from game import Game
 from player import Player
@@ -59,6 +60,10 @@ class League:
         players: Set[Player] = set()
         for game in self.seasons_dict[season]:
             for player in game.home_team.players:
+                pass
+
+    def get_random_game(self, season:str) -> Game:
+        return self.seasons_dict[season][randint(0, len(self.seasons_dict[season]))]
 
 
 def load_league(path: str) -> League:
