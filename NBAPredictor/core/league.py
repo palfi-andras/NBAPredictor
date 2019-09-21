@@ -5,7 +5,8 @@ from random import randint
 from game import Game
 from player import Player
 
-
+NUM_GAMES = 82
+DEFAULT_SEASON = "2017-2018"
 class League:
 
     def __init__(self, seasons_dict: Dict[str, List[Game]]):
