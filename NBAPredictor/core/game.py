@@ -1,5 +1,4 @@
 from team import Team
-from player_stat_types import PlayerStatTypes
 
 
 class Game:
@@ -10,4 +9,3 @@ class Game:
         self.code = code
         self.season = season
         self.date = date
-

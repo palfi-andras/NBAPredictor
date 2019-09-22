@@ -28,5 +28,5 @@ if __name__ == '__main__':
         tfops.run_neural_network()
     else:
         league = load_league(args.league_save)
-        tfops = TensorflowOperations(league, load_predictions())
+        tfops = TensorflowOperations(league, load_predictions(), num_epochs=100)
         tfops.run_neural_network()

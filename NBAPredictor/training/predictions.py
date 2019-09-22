@@ -1,12 +1,17 @@
+import datetime
 import json
 import os
 import pickle
-import time
 from typing import Dict, Tuple, List
+
+import tensorflow as tf
 
 from game import Game
 from game_period import GamePeriod
+from league import DEFAULT_SEASON
+from read_game import build_input_labels_array
 from team import Team
+from tensorflow_operations import NUM_EPOCHS, NEURAL_NETWORK_SHAPE
 
 DEFAULT_SAVE_LOCATION = './resources/predictions.pkl'
 DEFAULT_STAT_LOCATION = './resources/predictions.json'
@@ -14,12 +19,27 @@ DEFAULT_STAT_LOCATION = './resources/predictions.json'
 
 class Predictions:
 
-    def __init__(self):
+    def __init__(self, season: str = DEFAULT_SEASON, num_epochs: int = NUM_EPOCHS,
+            nn_shape: List[int] = NEURAL_NETWORK_SHAPE):
         self.historical_predictions: Dict[Game, List[Team]] = dict()
+        self.season = season
         self.instance_predictions: Dict[Game, List[Team]] = dict()
+        self.best_accuracy = float('-inf')
+        self.best_vars = None
+        self.num_epochs = num_epochs
+        self.nn_shape = nn_shape
 
     def clear_instance_predictions(self):
         self.instance_predictions = dict()
+
+    def set_season(self, season: str):
+        self.season = season
+
+    def set_num_epochs(self, num_epochs: int):
+        self.num_epochs = num_epochs
+
+    def set_nn_shape(self, shape: List[int]):
+        self.nn_shape = shape
 
     def add_prediction_instance(self, game: Game, prediction_prob: List[float]) -> Tuple:
         assert len(prediction_prob) == 2, f"There should only be 2 percentages in prediction_prob, found " \
@@ -39,13 +59,18 @@ class Predictions:
         predicted_home_team_won = True if predicted_winner == game.home_team else False
         return actual_home_team_won, predicted_home_team_won
 
-    def add_seasonal_prediction_instance(self, predictions: List, sorted_games: List[Game]):
+    def add_seasonal_prediction_instance(self, predictions: List, sorted_games: List[Game],
+            tf_model: tf.estimator.DNNClassifier):
         confusion_matrix = [0, 0, 0, 0]
         for i, game in enumerate(sorted_games):
             probabilities = predictions[i]['probabilities']
             outcomes = self.add_prediction_instance(game, probabilities)
             confusion_matrix = recursive_build_confusion_matrix(confusion_matrix, outcomes[0], outcomes[1])
         for k, v in analyze_confusion_matrix(confusion_matrix, len(sorted_games)).items():
+            if k == "Accuracy" and v > self.best_accuracy:
+                self.best_accuracy = v
+                self.best_vars = {name: tf_model.get_variable_value(name).tolist() for name in
+                                  tf_model.get_variable_names()}
             print(f"{k} : {v}")
 
     def analyze_end_performance(self):
@@ -82,11 +107,29 @@ class Predictions:
 
     def write_stats_to_json(self, stats: Dict, path: str = DEFAULT_STAT_LOCATION):
         if os.path.isfile(path):
-            with open(path, 'a') as json_file:
-                json.dump({time.time(): stats}, json_file)
+            with open(path, 'r') as json_file:
+                prev_data = json.load(json_file)
+                json_file.close()
+            with open(path, 'w') as json_file:
+                stats['season'] = self.season
+                stats['num_epochs'] = self.num_epochs
+                stats['nn_shape'] = self.nn_shape
+                stats['best_performer'] = dict()
+                stats['best_performer']['Accuracy'] = self.best_accuracy
+                stats['best_performer']['Labels'] = build_input_labels_array()
+                stats['best_performer']["Vars"] = self.best_vars
+                prev_data[datetime.datetime.now().__str__()] = stats
+                json.dump(prev_data, json_file)
         else:
             with open(path, 'w') as json_file:
-                json.dump({time.time(): stats}, json_file)
+                stats['season'] = self.season
+                stats['num_epochs'] = self.num_epochs
+                stats['nn_shape'] = self.nn_shape
+                stats['best_performer'] = dict()
+                stats['best_performer']['Accuracy'] = self.best_accuracy
+                stats['best_performer']['Labels'] = build_input_labels_array()
+                stats['best_performer']["Vars"] = self.best_vars
+                json.dump({datetime.datetime.now().__str__(): stats}, json_file)
 
 
 def recursive_build_confusion_matrix(previous: List[int], actual_home_win: bool, predicted_home_win: bool) -> List[int]:
