@@ -7,16 +7,16 @@ import tensorflow as tf
 
 from game import Game
 from game_period import GamePeriod
-from read_game import build_input_labels_array
 from team import Team
 
 
 class Predictions:
 
-    def __init__(self, season: str, num_epochs: int, nn_shape: List[int], outfile: str):
+    def __init__(self, season: str, num_epochs: int, nn_shape: List[int], labels_used: List[str], outfile: str):
         self.season = season
         self.outfile = outfile
         self.instance_predictions: Dict[Game, List[Team]] = dict()
+        self.labels_used = labels_used
         self.best_accuracy = float('-inf')
         self.best_vars = None
         self.num_epochs = num_epochs
@@ -90,7 +90,7 @@ class Predictions:
                 stats['nn_shape'] = self.nn_shape
                 stats['best_performer'] = dict()
                 stats['best_performer']['Accuracy'] = self.best_accuracy
-                stats['best_performer']['Labels'] = build_input_labels_array()
+                stats['best_performer']['Labels'] = self.labels_used
                 stats['best_performer']["Vars"] = self.best_vars
                 prev_data[datetime.datetime.now().__str__()] = stats
                 json.dump(prev_data, json_file)
@@ -101,7 +101,7 @@ class Predictions:
                 stats['nn_shape'] = self.nn_shape
                 stats['best_performer'] = dict()
                 stats['best_performer']['Accuracy'] = self.best_accuracy
-                stats['best_performer']['Labels'] = build_input_labels_array()
+                stats['best_performer']['Labels'] = self.labels_used
                 stats['best_performer']["Vars"] = self.best_vars
                 json.dump({datetime.datetime.now().__str__(): stats}, json_file)
 

@@ -8,22 +8,22 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 
 from league import League
 from predictions import Predictions
-from read_game import ReadGames, build_input_labels_array
+from read_game import ReadGames
 
 
 class TensorflowOperations:
 
     def __init__(self, league: League, num_epochs: int, learning_rate: float, nn_shape: List[int], season: str,
-            split: float, outfile: str, model_dir: str):
+            split: float, outfile: str, model_dir: str, features: List[str]):
         self.leauge = league
         self.num_epochs = num_epochs
         self.learning_rate = learning_rate
         self.nn_shape = nn_shape
         self.model_dir = model_dir
+        self.parsed_season = ReadGames(self.leauge, season, split, features)
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
-        self.parsed_season = ReadGames(self.leauge, season, split)
-        self.predictions = Predictions(season, num_epochs, nn_shape, outfile)
+        self.predictions = Predictions(season, num_epochs, nn_shape, self.parsed_season.features, outfile)
         self.train_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.training_features,
                                                                        y=self.parsed_season.training_labels,
                                                                        batch_size=500, num_epochs=None, shuffle=False)
@@ -33,7 +33,7 @@ class TensorflowOperations:
 
     def create_feature_columns(self):
         feature_cols = list()
-        for item in build_input_labels_array():
+        for item in self.parsed_season.features:
             feature_cols.append(tf.feature_column.numeric_column(key=item))
         return feature_cols
 
@@ -45,7 +45,7 @@ class TensorflowOperations:
 
     def run_neural_network(self):
         for x in range(0, self.num_epochs):
-            print(f"Running instance #{x}")
+            print(f"Running instance #{x + 1}")
             self.train()
             self.evaluate()
             self.get_predictions()

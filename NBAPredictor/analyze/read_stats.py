@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from collections import OrderedDict
 from typing import Tuple, Dict, Any
 
 """
@@ -26,6 +27,12 @@ class ReadStats:
         print("\nThese are the 3 best features so far in predicting an away team victory correctly")
         for index, feature in enumerate(self.best_features[::-1][:3]):
             print(f"{index + 1}. {feature[0]}, Average Weight: {feature[1]}")
+
+    def get_last_used_features(self):
+        """
+        Returns the set of features used in the last run
+        """
+        return self.stats[next(reversed(OrderedDict(self.stats)))]['best_performer']['Labels']
 
     def get_highest_accuracy(self) -> Tuple[float, Dict[str, Any]]:
         """
