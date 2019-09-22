@@ -1,50 +1,30 @@
 import datetime
 import json
 import os
-import pickle
 from typing import Dict, Tuple, List
 
 import tensorflow as tf
 
 from game import Game
 from game_period import GamePeriod
-from league import DEFAULT_SEASON
 from read_game import build_input_labels_array
 from team import Team
-from tensorflow_operations import NUM_EPOCHS, NEURAL_NETWORK_SHAPE
-
-DEFAULT_SAVE_LOCATION = './resources/predictions.pkl'
-DEFAULT_STAT_LOCATION = './resources/predictions.json'
 
 
 class Predictions:
 
-    def __init__(self, season: str = DEFAULT_SEASON, num_epochs: int = NUM_EPOCHS,
-            nn_shape: List[int] = NEURAL_NETWORK_SHAPE):
-        self.historical_predictions: Dict[Game, List[Team]] = dict()
+    def __init__(self, season: str, num_epochs: int, nn_shape: List[int], outfile: str):
         self.season = season
+        self.outfile = outfile
         self.instance_predictions: Dict[Game, List[Team]] = dict()
         self.best_accuracy = float('-inf')
         self.best_vars = None
         self.num_epochs = num_epochs
         self.nn_shape = nn_shape
 
-    def clear_instance_predictions(self):
-        self.instance_predictions = dict()
-
-    def set_season(self, season: str):
-        self.season = season
-
-    def set_num_epochs(self, num_epochs: int):
-        self.num_epochs = num_epochs
-
-    def set_nn_shape(self, shape: List[int]):
-        self.nn_shape = shape
-
     def add_prediction_instance(self, game: Game, prediction_prob: List[float]) -> Tuple:
         assert len(prediction_prob) == 2, f"There should only be 2 percentages in prediction_prob, found " \
                                           f"{len(prediction_prob)}: {prediction_prob}"
-        self.historical_predictions.setdefault(game, list())
         self.instance_predictions.setdefault(game, list())
         actual_winner = game.home_team if game.home_team.scores.get(GamePeriod.TOTAL) > game.away_team.scores.get(
             GamePeriod.TOTAL) else game.away_team
@@ -53,7 +33,6 @@ class Predictions:
         predicted_loser = game.away_team if predicted_winner is game.home_team else game.home_team
         print(f"PREDICTED: {predicted_winner.name} beats {predicted_loser.name} for game {game.code}")
         print(f"ACTUAL RESULT: {actual_winner.name} beats {actual_loser.name} for game {game.code}\n")
-        self.historical_predictions[game].append(predicted_winner)
         self.instance_predictions[game].append(predicted_winner)
         actual_home_team_won = True if actual_winner == game.home_team else False
         predicted_home_team_won = True if predicted_winner == game.home_team else False
@@ -98,14 +77,9 @@ class Predictions:
         final_stats = analyze_confusion_matrix(total_results, sum(total_results))
         for k, v in final_stats.items():
             print(f"{k} : {v}")
-        self.write_stats_to_json(final_stats)
-        self.clear_instance_predictions()
+        self.write_stats_to_json(final_stats, self.outfile)
 
-    def save_predictions_instance(self, path: str = DEFAULT_SAVE_LOCATION):
-        with open(path, 'wb') as pickle_file:
-            pickle.dump(self, pickle_file)
-
-    def write_stats_to_json(self, stats: Dict, path: str = DEFAULT_STAT_LOCATION):
+    def write_stats_to_json(self, stats: Dict, path: str):
         if os.path.isfile(path):
             with open(path, 'r') as json_file:
                 prev_data = json.load(json_file)
@@ -160,12 +134,3 @@ def analyze_confusion_matrix(confusion_matrix: List[int], num_games: int) -> Dic
     error_rate = (false_negatives + false_positives) / num_games
     return {"True Positives": true_positives, "False Negatives": false_negatives, "False Positives": false_positives,
             "True Negatives": true_negatives, "Accuracy": accuracy, "Precision": precision, "Error Rate": error_rate}
-
-
-def load_predictions(path: str = DEFAULT_SAVE_LOCATION) -> Predictions:
-    if not os.path.isfile(path):
-        return Predictions()
-    else:
-        with open(path, 'rb') as pickle_file:
-            predictions: Predictions = pickle.load(pickle_file)
-        return predictions

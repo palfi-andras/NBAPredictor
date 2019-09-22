@@ -8,26 +8,20 @@ from league import League
 from predictions import Predictions
 from read_game import ReadGames, build_input_labels_array
 
-TRAIN_SIZE = 0.9
-NUM_EPOCHS = 100
-NEURAL_NETWORK_SHAPE = [16, 5, 3]
-
 
 class TensorflowOperations:
 
-    def __init__(self, league: League, predictions: Predictions, num_epochs=NUM_EPOCHS, learning_rate=0.01,
-            nn_shape: List[int] = NEURAL_NETWORK_SHAPE):
+    def __init__(self, league: League, num_epochs: int, learning_rate: float, nn_shape: List[int], season: str,
+            split: float, outfile: str, model_dir: str):
         self.leauge = league
         self.num_epochs = num_epochs
         self.learning_rate = learning_rate
-        self.feature_cols = self.create_feature_columns()
         self.nn_shape = nn_shape
+        self.model_dir = model_dir
+        self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
-        self.parsed_season = ReadGames(self.leauge)
-        self.predictions = predictions
-        self.predictions.set_season(self.parsed_season.sorted_games[0].season)
-        self.predictions.set_num_epochs(self.num_epochs)
-        self.predictions.set_nn_shape(self.nn_shape)
+        self.parsed_season = ReadGames(self.leauge, season, split)
+        self.predictions = Predictions(season, num_epochs, nn_shape, outfile)
         self.train_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.training_features,
                                                                        y=self.parsed_season.training_labels,
                                                                        batch_size=500, num_epochs=None, shuffle=False)
@@ -42,7 +36,7 @@ class TensorflowOperations:
         return feature_cols
 
     def create_model(self):
-        return tf.estimator.DNNClassifier(model_dir='model/', hidden_units=self.nn_shape,
+        return tf.estimator.DNNClassifier(model_dir=self.model_dir, hidden_units=self.nn_shape,
                                           feature_columns=self.feature_cols, n_classes=2, label_vocabulary=['H', 'A'],
                                           optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
                                               learning_rate=self.learning_rate, l1_regularization_strength=0.001))
@@ -54,7 +48,6 @@ class TensorflowOperations:
             self.evaluate()
             self.get_predictions()
         self.predictions.analyze_end_performance()
-        self.predictions.save_predictions_instance()
 
     def train(self):
         self.model.train(input_fn=self.train_input_function, steps=self.num_epochs)

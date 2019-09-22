@@ -5,7 +5,7 @@ import numpy as np
 
 from game import Game
 from game_period import GamePeriod
-from league import League, DEFAULT_SEASON
+from league import League
 from player import Player
 from player_stat_types import PlayerStatTypes
 from team import Team
@@ -30,7 +30,7 @@ def build_input_labels_array() -> List[str]:
 
 class ReadGames:
 
-    def __init__(self, leauge: League, season: str = DEFAULT_SEASON, split: float = 0.8):
+    def __init__(self, leauge: League, season: str, split: float):
         self.leauge = leauge
         assert season in self.leauge.seasons_dict, f"Cant find season {season}"
         self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
