@@ -4,6 +4,8 @@ from typing import List
 
 import tensorflow as tf
 
+tf.logging.set_verbosity(tf.logging.ERROR)
+
 from league import League
 from predictions import Predictions
 from read_game import ReadGames, build_input_labels_array

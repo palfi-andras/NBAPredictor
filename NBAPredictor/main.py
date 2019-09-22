@@ -5,6 +5,7 @@ from tap import Tap
 
 from league import load_league
 from nba_json_parser import NBAJsonParser
+from read_stats import ReadStats
 from tensorflow_operations import TensorflowOperations
 
 
@@ -30,6 +31,7 @@ class ParsedConfigs:
         self.season = self.configs["DEFAULT"]["SEASON"]
         self.stat_location = self.configs["DEFAULT"]["STAT_LOCATION"]
         self.model_dir = self.configs["DEFAULT"]["MODEL_DIR"]
+        self.features_location = self.configs["DEFAULT"]["FEATURE_PERFORMANCE_LOCATION"]
 
     def extract_model_shape(self):
         shape = self.configs["DEFAULT"]["NN_SHAPE"]
@@ -40,6 +42,7 @@ class ParsedConfigs:
 if __name__ == '__main__':
     args: NBAPredictorArguments = NBAPredictorArguments().parse_args()
     parsed_configs = ParsedConfigs(args.config_file)
+    read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location)
     if not args.rebuild and not os.path.isfile(args.league_save):
         args.rebuild = True
     if args.rebuild:
