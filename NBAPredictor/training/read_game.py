@@ -5,7 +5,7 @@ import numpy as np
 
 from game import Game
 from game_period import GamePeriod
-from league import League, NUM_GAMES, DEFAULT_SEASON
+from league import League, DEFAULT_SEASON
 from player import Player
 from player_stat_types import PlayerStatTypes
 from team import Team
@@ -33,9 +33,8 @@ class ReadGames:
     def __init__(self, leauge: League, season: str = DEFAULT_SEASON, split: float = 0.8):
         self.leauge = leauge
         assert season in self.leauge.seasons_dict, f"Cant find season {season}"
-        self.season = season
-        self.training_size = round(NUM_GAMES * split)
-        self.sorted_games = sorted(self.leauge.seasons_dict[self.season].__iter__(),
+        self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
+        self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
                                    key=lambda x: re.sub(r"[A-Z]", "", x.code))
         self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
             self.parse_whole_season()
@@ -84,6 +83,8 @@ class ReadGames:
             testing_features[item] = np.array(testing_features[item])
         training_labels = np.array([label for label in training_labels])
         testing_labels = np.array([label for label in testing_labels])
+        print(f"Number of games used for training: {len(training_labels)}")
+        print(f"Number of games used for testing: {len(testing_labels)}")
         return training_features, training_labels, testing_features, testing_labels
 
     def get_winner(self, game: Game):

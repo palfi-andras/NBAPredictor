@@ -1,12 +1,13 @@
 import pickle
-from typing import Dict, List, Set
 from random import randint
+from typing import Dict, List, Set
 
 from game import Game
 from player import Player
 
-NUM_GAMES = 82
 DEFAULT_SEASON = "2017-2018"
+
+
 class League:
 
     def __init__(self, seasons_dict: Dict[str, List[Game]]):
@@ -63,7 +64,7 @@ class League:
             for player in game.home_team.players:
                 pass
 
-    def get_random_game(self, season:str) -> Game:
+    def get_random_game(self, season: str) -> Game:
         return self.seasons_dict[season][randint(0, len(self.seasons_dict[season]))]
 
 

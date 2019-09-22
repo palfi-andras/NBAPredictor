@@ -4,6 +4,7 @@ from tap import Tap
 
 from league import load_league
 from nba_json_parser import NBAJsonParser
+from predictions import load_predictions
 from tensorflow_operations import TensorflowOperations
 
 
@@ -23,9 +24,9 @@ if __name__ == '__main__':
     if args.rebuild:
         league = NBAJsonParser(args.dir).generate_league_object()
         league.save_league(args.league_save)
+        tfops = TensorflowOperations(league, load_predictions())
+        tfops.run_neural_network()
     else:
         league = load_league(args.league_save)
-        tfops = TensorflowOperations(league)
-        tfops.train()
-        tfops.evaluate()
-        tfops.get_predictions()
+        tfops = TensorflowOperations(league, load_predictions())
+        tfops.run_neural_network()

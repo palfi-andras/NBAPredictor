@@ -1,10 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from typing import List
-
 import tensorflow as tf
 
 from league import League
+from predictions import Predictions
 from read_game import ReadGames, build_input_labels_array
 
 TRAIN_SIZE = 0.9
@@ -12,14 +11,14 @@ TRAIN_SIZE = 0.9
 
 class TensorflowOperations:
 
-    def __init__(self, league: League, num_epochs=100, layers: List[int] = [30], learning_rate=0.01):
+    def __init__(self, league: League, predictions: Predictions, num_epochs=100, learning_rate=0.01):
         self.leauge = league
         self.num_epochs = num_epochs
-        self.layers = layers
         self.learning_rate = learning_rate
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
         self.parsed_season = ReadGames(self.leauge)
+        self.predictions = predictions
         self.train_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.training_features,
                                                                        y=self.parsed_season.training_labels,
                                                                        batch_size=500, num_epochs=None, shuffle=False)
@@ -39,6 +38,15 @@ class TensorflowOperations:
                                           optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
                                               learning_rate=self.learning_rate, l1_regularization_strength=0.001))
 
+    def run_neural_network(self):
+        for x in range(0, 2):
+            print(f"Running instance #{x}")
+            self.train()
+            self.evaluate()
+            self.get_predictions()
+        self.predictions.analyze_end_performance()
+        self.predictions.save_predictions_instance()
+
     def train(self):
         self.model.train(input_fn=self.train_input_function, steps=self.num_epochs)
 
@@ -47,19 +55,8 @@ class TensorflowOperations:
 
     def get_predictions(self):
         predictions = list(self.model.predict(input_fn=self.test_input_function))
-        for i in range(0, len(predictions)):
-            game = self.parsed_season.sorted_games[i]
-            home_team = game.home_team.name
-            away_team = game.away_team.name
-            actual_result = self.parsed_season.testing_labels[i]
-            probabilities = predictions[i]['probabilities']
-            if probabilities[0] > probabilities[1]:
-                print(f"PREDICTION: {home_team} beats {away_team}")
-            else:
-                print(f"PREDICTION: {away_team} beats {home_team}")
-            if actual_result == 'H':
-                print(f"ACTUAL RESULT: {home_team} beat {away_team}")
-            elif actual_result == 'A':
-                print(f"ACTUAL RESULT: {away_team} beat {home_team}")
-            else:
-                raise Exception(f"Unrecognized value {actual_result}, must be either H for Home Win or A for Away Win")
+        start_index = self.parsed_season.training_size + 1
+        predicted_games = list()
+        for i in range(start_index, len(self.parsed_season.sorted_games)):
+            predicted_games.append(self.parsed_season.sorted_games[i])
+        self.predictions.add_seasonal_prediction_instance(predictions, predicted_games)
