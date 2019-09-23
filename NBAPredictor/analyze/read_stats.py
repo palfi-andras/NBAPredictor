@@ -3,6 +3,7 @@ import os
 import re
 from collections import OrderedDict
 from typing import Tuple, Dict, Any
+import logging
 
 """
 A class to read the predictions.json file that stores data about the best results from a previous run of NBAPredictor.
@@ -12,21 +13,22 @@ Then the features used can be examined and their corresponding weights to see wh
 
 class ReadStats:
 
-    def __init__(self, stats_file: str, feature_file: str):
+    def __init__(self, stats_file: str, feature_file: str, logger: logging):
         assert os.path.isfile(stats_file), f"Cant find file {stats_file}"
         with open(stats_file, 'r') as json_file:
             self.stats = json.load(json_file)
         self.feature_file = feature_file
         self.features = self.write_avg_feature_weight()
         self.best_features = self.get_best_features()
-        print(
+        self.logger = logger
+        self.logger.info(
             f"This program has been run {len(self.stats)} times.\n These are the 3 best features so far in predicting "
             f"a home team win correctly: ")
         for index, feature in enumerate(self.best_features[:3]):
-            print(f"{index + 1}. {feature[0]}, Average Weight: {feature[1]}")
-        print("\nThese are the 3 best features so far in predicting an away team victory correctly")
+            self.logger.info(f"{index + 1}. {feature[0]}, Average Weight: {feature[1]}")
+        self.logger.info("\nThese are the 3 best features so far in predicting an away team victory correctly")
         for index, feature in enumerate(self.best_features[::-1][:3]):
-            print(f"{index + 1}. {feature[0]}, Average Weight: {feature[1]}")
+            self.logger.info(f"{index + 1}. {feature[0]}, Average Weight: {feature[1]}")
 
     def get_last_used_features(self):
         """

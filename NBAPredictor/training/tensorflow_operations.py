@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from typing import List
+import logging
 
 import tensorflow as tf
 
@@ -14,22 +15,24 @@ from read_game import ReadGames
 class TensorflowOperations:
 
     def __init__(self, league: League, num_epochs: int, learning_rate: float, nn_shape: List[int], season: str,
-            split: float, outfile: str, model_dir: str, features: List[str]):
+            split: float, outfile: str, model_dir: str, features: List[str], logger: logging):
         self.leauge = league
         self.num_epochs = num_epochs
         self.learning_rate = learning_rate
         self.nn_shape = nn_shape
         self.model_dir = model_dir
-        self.parsed_season = ReadGames(self.leauge, season, split, features)
+        self.parsed_season = ReadGames(self.leauge, season, split, logger, features)
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
-        self.predictions = Predictions(season, num_epochs, nn_shape, self.parsed_season.features, outfile)
+        self.predictions = Predictions(season, num_epochs, nn_shape, self.parsed_season.features, outfile,
+                                       logger=logger)
         self.train_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.training_features,
                                                                        y=self.parsed_season.training_labels,
                                                                        batch_size=500, num_epochs=None, shuffle=False)
         self.test_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.testing_features,
                                                                       y=self.parsed_season.testing_labels, num_epochs=1,
                                                                       shuffle=False)
+        self.logger = logger
 
     def create_feature_columns(self):
         feature_cols = list()
@@ -45,7 +48,7 @@ class TensorflowOperations:
 
     def run_neural_network(self):
         for x in range(0, self.num_epochs):
-            print(f"Running instance #{x + 1}")
+            self.logger.info(f"Running instance #{x + 1}")
             self.train()
             self.evaluate()
             self.get_predictions()

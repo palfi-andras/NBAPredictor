@@ -1,3 +1,4 @@
+import hashlib
 import random
 from typing import List
 
@@ -7,8 +8,12 @@ from read_stats import ReadStats
 
 class FeatureSelection:
 
-    def __init__(self, read_stats: ReadStats, strategy: str):
+    def __init__(self, read_stats: ReadStats, strategy: str, nn_shape: List[int] = None):
         self.read_stats = read_stats
+        if nn_shape is not None:
+            self.nn_shape = nn_shape
+        else:
+            self.nn_shape = self.generate_random_nn_shape()
         if strategy == "UsePrevious":
             self.features = read_stats.get_last_used_features()
         elif strategy == "UseNBestAndRandom":
@@ -17,6 +22,15 @@ class FeatureSelection:
             self.features = self.use_best()
         else:
             self.features = DEFAULT_FEATURES
+        self.model_name = self.create_model_name()
+
+    def create_model_name(self):
+        name = "model-"
+        for layer in self.nn_shape:
+            name += f"{layer}-"
+        assert self.features
+        name += str(hashlib.sha1(str(self.features).encode('utf-8')).hexdigest())
+        return name
 
     def use_n_best_strategy(self, n: int = 6, feature_set_size=12, vary_input_size=False) -> List[str]:
         """
@@ -26,22 +40,39 @@ class FeatureSelection:
         :return:
         """
         if n % 2 != 0:
-            print(f"WARNING: Selected N: {n} is not even so an even split cant be made")
             n += 1
+        if vary_input_size:
+            # This will play around with the feature set size, +/- 4
+            feature_set_size = feature_set_size - random.randint(-4, 4)
         assert n + 1 < feature_set_size
         features = [x[0] for x in self.read_stats.best_features[:int(n / 2)]] + [y[0] for y in
                                                                                  self.read_stats.best_features[::-1][
                                                                                  :int(n / 2)]]
-        while len(features) <= feature_set_size:
-            choice = POSSIBLE_FEATURES[random.randint(0, len(POSSIBLE_FEATURES))]
+        while len(features) < feature_set_size:
+            choice = POSSIBLE_FEATURES[random.randint(0, len(POSSIBLE_FEATURES) - 1)]
             if choice not in features:
                 features.append(choice)
         return features
 
     def use_best(self, feature_set_size=12, vary_input_size=False) -> List[str]:
+        if vary_input_size:
+            # This will play around with the feature set size, +/- 4
+            feature_set_size = feature_set_size - random.randint(-4, 4)
         if feature_set_size % 2 != 0:
             feature_set_size += 1
         return [x[0] for x in self.read_stats.best_features[:int(feature_set_size / 2)]] + [y[0] for y in
                                                                                             self.read_stats.best_features[
                                                                                             ::-1][
                                                                                             :int(feature_set_size / 2)]]
+
+    def generate_random_nn_shape(self):
+        layers = []
+        num_layers = random.randint(2, 4)
+        for layer in range(num_layers):
+            if layer == 0:
+                layers.append(random.randint(12, 24))
+            elif layer == 1:
+                layers.append(random.randint(6, 10))
+            else:
+                layers.append(random.randint(2, 4))
+        return layers

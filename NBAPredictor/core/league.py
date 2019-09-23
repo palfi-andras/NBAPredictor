@@ -1,4 +1,5 @@
 import pickle
+from collections import OrderedDict
 from random import randint
 from typing import Dict, List, Set
 
@@ -17,6 +18,9 @@ class League:
     def save_league(self, path: str):
         with open(path, 'wb') as pickle_file:
             pickle.dump(self, pickle_file)
+
+    def get_random_season(self) -> str:
+        return OrderedDict(self.seasons_dict)
 
     def generate_set_of_all_players(self) -> Set[Player]:
         """

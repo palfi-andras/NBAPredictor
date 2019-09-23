@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import logging
 from typing import Dict, Tuple, List
 
 import tensorflow as tf
@@ -12,7 +13,8 @@ from team import Team
 
 class Predictions:
 
-    def __init__(self, season: str, num_epochs: int, nn_shape: List[int], labels_used: List[str], outfile: str):
+    def __init__(self, season: str, num_epochs: int, nn_shape: List[int], labels_used: List[str], outfile: str,
+            logger: logging):
         self.season = season
         self.outfile = outfile
         self.instance_predictions: Dict[Game, List[Team]] = dict()
@@ -21,6 +23,7 @@ class Predictions:
         self.best_vars = None
         self.num_epochs = num_epochs
         self.nn_shape = nn_shape
+        self.logger = logger
 
     def add_prediction_instance(self, game: Game, prediction_prob: List[float]) -> Tuple:
         assert len(prediction_prob) == 2, f"There should only be 2 percentages in prediction_prob, found " \
@@ -31,8 +34,8 @@ class Predictions:
         actual_loser = game.away_team if actual_winner is game.home_team else game.home_team
         predicted_winner = game.home_team if prediction_prob[0] > prediction_prob[1] else game.away_team
         predicted_loser = game.away_team if predicted_winner is game.home_team else game.home_team
-        print(f"PREDICTED: {predicted_winner.name} beats {predicted_loser.name} for game {game.code}")
-        print(f"ACTUAL RESULT: {actual_winner.name} beats {actual_loser.name} for game {game.code}\n")
+        self.logger.info(f"PREDICTED: {predicted_winner.name} beats {predicted_loser.name} for game {game.code}")
+        self.logger.info(f"ACTUAL RESULT: {actual_winner.name} beats {actual_loser.name} for game {game.code}\n")
         self.instance_predictions[game].append(predicted_winner)
         actual_home_team_won = True if actual_winner == game.home_team else False
         predicted_home_team_won = True if predicted_winner == game.home_team else False
@@ -50,14 +53,14 @@ class Predictions:
                 self.best_accuracy = v
                 self.best_vars = {name: tf_model.get_variable_value(name).tolist() for name in
                                   tf_model.get_variable_names()}
-            print(f"{k} : {v}")
+            self.logger.info(f"{k} : {v}")
 
     def analyze_end_performance(self):
-        print(f"###### FINAL RESULTS FOR EACH GAME###### \n")
+        self.logger.info(f"###### FINAL RESULTS FOR EACH GAME###### \n")
         total_results = [0, 0, 0, 0]
         for game in self.instance_predictions:
-            print(f"Simulated game {game.home_team.name} vs {game.away_team.name} "
-                  f"{len(self.instance_predictions[game])} times.")
+            self.logger.info(f"Simulated game {game.home_team.name} vs {game.away_team.name} "
+                             f"{len(self.instance_predictions[game])} times.")
             confusion_matrix = [0, 0, 0, 0]
             for predicted_winner in self.instance_predictions[game]:
                 actual_winner = game.home_team if game.home_team.scores.get(
@@ -72,11 +75,11 @@ class Predictions:
             total_results[3] += confusion_matrix[3]
 
             for k, v in analyze_confusion_matrix(confusion_matrix, len(self.instance_predictions[game])).items():
-                print(f"{k} : {v}")
-        print("\n###### FINAL RESULTS FOR ALL GAMES###### \n")
+                self.logger.info(f"{k} : {v}")
+        self.logger.info("\n###### FINAL RESULTS FOR ALL GAMES###### \n")
         final_stats = analyze_confusion_matrix(total_results, sum(total_results))
         for k, v in final_stats.items():
-            print(f"{k} : {v}")
+            self.logger.info(f"{k} : {v}")
         self.write_stats_to_json(final_stats, self.outfile)
 
     def write_stats_to_json(self, stats: Dict, path: str):

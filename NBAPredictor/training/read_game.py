@@ -1,5 +1,6 @@
 import re
 from typing import List
+import logging
 
 import numpy as np
 
@@ -37,10 +38,12 @@ def determine_best_player_from_team(team: Team) -> Player:
 
 class ReadGames:
 
-    def __init__(self, leauge: League, season: str, split: float, features: List[str] = DEFAULT_FEATURES):
+    def __init__(self, leauge: League, season: str, split: float, logger: logging,
+            features: List[str] = DEFAULT_FEATURES):
         self.leauge = leauge
+        self.logger = logger
         assert season in self.leauge.seasons_dict, f"Cant find season {season}"
-        assert all(features) in POSSIBLE_FEATURES
+        assert all(e in POSSIBLE_FEATURES for e in features)
         self.features = features
         self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
         self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
@@ -72,8 +75,8 @@ class ReadGames:
             testing_features[item] = np.array(testing_features[item])
         training_labels = np.array([label for label in training_labels])
         testing_labels = np.array([label for label in testing_labels])
-        print(f"Number of games used for training: {len(training_labels)}")
-        print(f"Number of games used for testing: {len(testing_labels)}")
+        self.logger.info(f"Number of games used for training: {len(training_labels)}")
+        self.logger.info(f"Number of games used for testing: {len(testing_labels)}")
         return training_features, training_labels, testing_features, testing_labels
 
     def map_feature_name_to_actual_value(self, name: str, game: Game) -> float:
@@ -157,8 +160,12 @@ class ReadGames:
                 g.home_team == game.home_team and g.home_team.scores.get(GamePeriod.TOTAL) > g.away_team.scores.get(
             GamePeriod.TOTAL)) or (g.away_team == game.home_team and g.away_team.scores.get(
             GamePeriod.TOTAL) > g.home_team.scores.get(GamePeriod.TOT))]
-        home_team_record = len(home_team_wins) / len(home_team_previous_games)
-        away_team_record = len(away_team_wins) / len(away_team_previous_games)
+        try:
+            home_team_record = len(home_team_wins) / len(home_team_previous_games)
+            away_team_record = len(away_team_wins) / len(away_team_previous_games)
+        except ZeroDivisionError:
+            home_team_record = 0.0
+            away_team_record = 0.0
         return home_team_record - away_team_record
 
     def determine_rebound_differential(self, game: Game) -> float:
@@ -219,7 +226,7 @@ class ReadGames:
         return game.home_team.team_stats.get(PlayerStatTypes.ORTG) - game.away_team.team_stats.get(PlayerStatTypes.ORTG)
 
     def determine_defensive_rating_spread(self, game: Game) -> float:
-        return game.home_team.team_stats.get(PlayerStatTypes.DRTG) - game.away_team.team_stats.get(PlayerStatTypes.DRTG)
+        return game.home_team.team_stats.get(PlayerStatTypes.DRTF) - game.away_team.team_stats.get(PlayerStatTypes.DRTF)
 
     def determine_assist_to_turnover_spread(self, game: Game) -> float:
         return game.home_team.team_stats.get(PlayerStatTypes.ASTTOV) - game.away_team.team_stats.get(
