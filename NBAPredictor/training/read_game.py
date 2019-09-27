@@ -3,6 +3,7 @@ from typing import List
 import logging
 
 import numpy as np
+from statistics import stdev
 
 from game import Game
 from game_period import GamePeriod
@@ -17,12 +18,12 @@ POSSIBLE_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveReboun
                      "BestPlayerSpread", "TeamRecordSpread", "StealSpread", "BlockSpread", "PersonalFoulSpread",
                      "TrueShootingPercentSpread", "ThreePointRateSpread", "FreeThrowRateSpread",
                      "OffensiveRatingSpread", "DefensiveRatingSpread", "AssistToTurnoverSpread",
-                     "StealToTurnoverSpread", "HOBSpread"]
+                     "StealToTurnoverSpread", "HOBSpread", "ExperienceSpread", "HomeOrAway"]
 
 DEFAULT_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveReboundSpread", "AssistSpread",
                     "TurnoverSpread", "FieldGoalPercentSpread", "ThreePointPercentSpread", "FreeThrowPercentSpread",
                     "FieldGoalsAttemptedSpread", "ThreePointsAttemptedSpread", "FreeThrowsAttemptedSpread",
-                    "BestPlayerSpread"]
+                    "BestPlayerSpread", "HomeOrAway"]
 
 
 def determine_best_player_from_team(team: Team) -> Player:
@@ -34,6 +35,14 @@ def determine_best_player_from_team(team: Team) -> Player:
             if fic > best_val:
                 best_player = player
     return best_player
+
+
+def center_values(values: List[float]) -> List[float]:
+    try:
+        avg = sum(values) / len(values)
+        return [(x - avg) / stdev(values) for x in values]
+    except ZeroDivisionError:
+        return values
 
 
 class ReadGames:
@@ -70,8 +79,10 @@ class ReadGames:
             for feature in self.features:
                 testing_features[feature].append(self.map_feature_name_to_actual_value(feature, game))
         for item in training_features:
+            training_features[item] = center_values(training_features[item])
             training_features[item] = np.array(training_features[item])
         for item in testing_features:
+            testing_features[item] = center_values(testing_features[item])
             testing_features[item] = np.array(testing_features[item])
         training_labels = np.array([label for label in training_labels])
         testing_labels = np.array([label for label in testing_labels])
@@ -128,6 +139,10 @@ class ReadGames:
             return self.determine_steal_to_turnover_spread(game)
         elif name == "HOBSpread":
             return self.determine_hob_spread_spread(game)
+        elif name == "ExperienceSpread":
+            return self.determine_experience_spread(game)
+        elif name == "HomeOrAway":
+            return 1.0
         else:
             return 0.0
 
@@ -141,6 +156,20 @@ class ReadGames:
         away_team_best_player = determine_best_player_from_team(game.away_team)
         return home_team_best_player.stats.get(PlayerStatTypes.FIC) - away_team_best_player.stats.get(
             PlayerStatTypes.FIC)
+
+    def determine_experience_spread(self, game: Game) -> float:
+        """
+      Calculates the difference ebtween each players experience levels
+      """
+        home_team_experience = 0.0
+        away_team_experience = 0.0
+        for p in game.home_team.players:
+            home_team_experience += p.experience
+        home_team_experience = home_team_experience / len(game.home_team.players)
+        for p in game.away_team.players:
+            away_team_experience += p.experience
+        away_team_experience = away_team_experience / len(game.away_team.players)
+        return float(home_team_experience - away_team_experience)
 
     def get_team_record_differential(self, game: Game) -> float:
         """

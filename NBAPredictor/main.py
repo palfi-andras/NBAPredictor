@@ -4,7 +4,7 @@ import os
 
 from tap import Tap
 
-from feature_selection import FeatureSelection
+from automated_selection import AutomatedSelection
 from league import load_league
 from nba_json_parser import NBAJsonParser
 from read_stats import ReadStats
@@ -26,7 +26,11 @@ class ParsedConfigs:
     def __init__(self, path: str):
         self.configs = configparser.ConfigParser()
         self.configs.read(path)
-        self.nn_shape = [int(x) for x in self.configs["DEFAULT"]["NN_SHAPE"].split()]
+        self.randomize_nn_shape = bool(self.configs["DEFAULT"]["RANDOMIZE_NN_SHAPE"])
+        if self.randomize_nn_shape == "False":
+            self.nn_shape = None
+        else:
+            self.nn_shape = [int(x) for x in self.configs["DEFAULT"]["NN_SHAPE"].split()]
         self.epochs = int(self.configs["DEFAULT"]["EPOCHS"])
         self.learning_rate = float(self.configs["DEFAULT"]["LEARNING_RATE"])
         self.train_size = float(self.configs["DEFAULT"]["TRAIN_SIZE"])
@@ -45,6 +49,7 @@ class ParsedConfigs:
                 self.configs["DEFAULT"]["BATCH_RUN_FEATURE_SELECTION_STRATEGY"].split()[0]
             self.n_best = self.configs["DEFAULT"]["BATCH_RUN_FEATURE_SELECTION_STRATEGY"].split()[1]
         self.log_file = self.configs["DEFAULT"]["LOG_FILE"]
+        self.mode = self.configs["DEFAULT"]["MODE"]
 
 
 if __name__ == '__main__':
@@ -73,20 +78,24 @@ if __name__ == '__main__':
     fh.setFormatter(formatter)
     ch.setFormatter(formatter)
     logger.addHandler(fh)
-    logger.addHandler(ch)
+    if parsed_configs.mode == "Analyze":
+        read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
+        read_stats.log_best_performer()
+        exit(0)
     for x in range(0, run_size):
         read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
-        feature_selector = FeatureSelection(read_stats, strategy=parsed_configs.feature_selection_strategy)
+        selector = AutomatedSelection(read_stats, strategy=parsed_configs.feature_selection_strategy,
+                                      nn_shape=parsed_configs.nn_shape)
         logger.info(f"Experiment #{x + 1}. Running DNN on the {parsed_configs.season}NBA Season for"
                     f" {parsed_configs.epochs} "
-                    f"epochs with the following NN shape: {feature_selector.nn_shape} and the following input "
+                    f"epochs with the following NN shape: {selector.nn_shape} and the following input "
                     f"features: "
-                    f"{feature_selector.features}")
+                    f"{selector.features}")
 
         tfops = TensorflowOperations(league=league, num_epochs=parsed_configs.epochs,
-                                     learning_rate=parsed_configs.learning_rate, nn_shape=parsed_configs.nn_shape,
+                                     learning_rate=parsed_configs.learning_rate, nn_shape=selector.nn_shape,
                                      season=parsed_configs.season, split=parsed_configs.train_size,
                                      outfile=parsed_configs.stat_location, model_dir=f"{parsed_configs.model_dir}/"
-                                                                                     f"{feature_selector.model_name}",
-                                     features=feature_selector.features, logger=logger)
+                                                                                     f"{selector.model_name}",
+                                     features=selector.features, logger=logger)
         tfops.run_neural_network()

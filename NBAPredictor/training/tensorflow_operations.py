@@ -4,6 +4,7 @@ from typing import List
 import logging
 
 import tensorflow as tf
+from sklearn.ensemble import ExtraTreesClassifier
 
 tf.logging.set_verbosity(tf.logging.ERROR)
 
@@ -15,13 +16,16 @@ from read_game import ReadGames
 class TensorflowOperations:
 
     def __init__(self, league: League, num_epochs: int, learning_rate: float, nn_shape: List[int], season: str,
-            split: float, outfile: str, model_dir: str, features: List[str], logger: logging):
+            split: float, outfile: str, model_dir: str, features: List[str], logger: logging,
+            weights: List[float] = None):
         self.leauge = league
         self.num_epochs = num_epochs
         self.learning_rate = learning_rate
         self.nn_shape = nn_shape
         self.model_dir = model_dir
         self.parsed_season = ReadGames(self.leauge, season, split, logger, features)
+        if weights:
+            assert len(weights) == self.parsed_season.features
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
         self.predictions = Predictions(season, num_epochs, nn_shape, self.parsed_season.features, outfile,

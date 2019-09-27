@@ -49,6 +49,20 @@ class ReadStats:
                 data = self.stats[instance]
         return highest_val, data
 
+    def log_best_performer(self):
+        best = self.get_highest_accuracy()
+        self.logger.info(f"\n\nThe model with the highest accuracy {best[0]} has the following characteristics: \n")
+        for k, v in best[1].items():
+            if k != 'best_performer':
+                self.logger.info(f"{k} : {v}")
+            else:
+                self.logger.info(f"Best Accuracy: {v['Accuracy']}")
+                self.logger.info("Features used: ")
+                for f in v['Labels']:
+                    self.logger.info(f)
+                for nw, w in v['Vars'].items():
+                    self.logger.info(f"{nw}: {w}")
+
     def get_highest_precision(self) -> Tuple[float, Dict[str, Any]]:
         """
         Returns the instance with the best precision
