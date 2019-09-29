@@ -11,7 +11,6 @@ Then the features used can be examined and their corresponding weights to see wh
 """
 
 
-# TODO THIS IS BROKEN WITH SVM COMPATIBILITY
 class ReadStats:
 
     def __init__(self, stats_file: str, feature_file: str, logger: logging):

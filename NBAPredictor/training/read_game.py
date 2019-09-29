@@ -45,15 +45,22 @@ def center_values(values: List[float]) -> List[float]:
         return values
 
 
-def center_numpy_features(values: np.array) -> np.array:
+def center_numpy_features(values: np.array, normalize=True) -> np.array:
     try:
         with np.nditer(values, op_flags=['readwrite']) as it:
             for i, x in enumerate(it):
                 current_col = i % values.shape[1]
-                col_vals = values[:, current_col]
-                col_avg = np.sum(col_vals) / col_vals.size
-                col_std_dev = stdev(col_vals.tolist())
-                x[...] = (x - col_avg) / col_std_dev
+                if not normalize:
+                    col_vals = values[:, current_col]
+                    col_avg = np.sum(col_vals) / col_vals.size
+                    col_std_dev = stdev(col_vals.tolist())
+                    x[...] = (x - col_avg) / col_std_dev
+                else:
+                    if (values.shape[1] - 1) != current_col:
+                        col_vals = values[:, current_col]
+                        col_avg = np.sum(col_vals) / col_vals.size
+                        col_std_dev = stdev(col_vals.tolist())
+                        x[...] = (x - col_avg) / col_std_dev
         return values
     except ZeroDivisionError:
         return values
@@ -75,9 +82,10 @@ def check_for_multiple_seasons(seasons: str) -> List[str]:
 class ReadGames:
 
     def __init__(self, leauge: League, season: str, split: float, logger: logging,
-            features: List[str] = DEFAULT_FEATURES, svm_compat=False):
+            features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False):
         self.leauge = leauge
         self.logger = logger
+        self.normalize_weights = normalize_weights
         seasons = [s for i, s in enumerate(check_for_multiple_seasons(season)) if s in self.leauge.seasons_dict]
         assert all(e in POSSIBLE_FEATURES for e in features)
         self.features = features
@@ -111,16 +119,24 @@ class ReadGames:
             training_labels.append(self.get_winner(game))
             for feature in self.features:
                 training_features[feature].append(self.map_feature_name_to_actual_value(feature, game))
+            if self.normalize_weights:
+                training_features.setdefault("weight", list())
+                training_features["weight"].append(self.map_feature_name_to_actual_value("TeamRecordSpread", game))
         for x in range(self.training_size + 1, len(self.sorted_games)):
             game = self.sorted_games[x]
             testing_labels.append(self.get_winner(game))
             for feature in self.features:
                 testing_features[feature].append(self.map_feature_name_to_actual_value(feature, game))
+            if self.normalize_weights:
+                testing_features.setdefault("weight", list())
+                testing_features["weight"].append(self.map_feature_name_to_actual_value("TeamRecordSpread", game))
         for item in training_features:
-            training_features[item] = center_values(training_features[item])
+            if item != "weight":
+                training_features[item] = center_values(training_features[item])
             training_features[item] = np.array(training_features[item])
         for item in testing_features:
-            testing_features[item] = center_values(testing_features[item])
+            if item != "weight":
+                testing_features[item] = center_values(testing_features[item])
             testing_features[item] = np.array(testing_features[item])
         training_labels = np.array([label for label in training_labels])
         testing_labels = np.array([label for label in testing_labels])
@@ -139,6 +155,8 @@ class ReadGames:
             game_array = np.array([])
             for feature in self.features:
                 game_array = np.append(game_array, [self.map_feature_name_to_actual_value(feature, game)])
+            if self.normalize_weights:
+                game_array = np.append(game_array, [self.map_feature_name_to_actual_value("TeamRecordSpread", game)])
             if training_features is None:
                 training_features = game_array
             else:
@@ -149,12 +167,14 @@ class ReadGames:
             game_array = np.array([])
             for feature in self.features:
                 game_array = np.append(game_array, [self.map_feature_name_to_actual_value(feature, game)])
+            if self.normalize_weights:
+                game_array = np.append(game_array, [self.map_feature_name_to_actual_value("TeamRecordSpread", game)])
             if testing_features is None:
                 testing_features = game_array
             else:
                 testing_features = np.vstack((testing_features, game_array))
-        testing_features = center_numpy_features(testing_features)
-        training_features = center_numpy_features(training_features)
+        testing_features = center_numpy_features(testing_features, normalize=self.normalize_weights)
+        training_features = center_numpy_features(training_features, normalize=self.normalize_weights)
         self.logger.info(f"Number of games used for training: {len(training_labels)}")
         self.logger.info(f"Number of games used for testing: {len(testing_labels)}")
         return training_features, training_labels, testing_features, testing_labels
@@ -233,19 +253,21 @@ class ReadGames:
         their location and a negative value means that the home field advantage feature does not matter as the away
         team is better
         """
-        home_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
-                (g.home_team.name == game.home_team.name) or (g.away_team.name == game.home_team.name))]
-        away_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
-                (g.home_team.name == game.away_team.name) or (g.away_team.name == game.away_team.name))]
+        home_team_previous_games = [g for g in self.sorted_games if
+                                    g.date < game.date and g.season == game.season and g.home_team.name ==
+                                    game.home_team.name]
+        away_team_previous_games = [g for g in self.sorted_games if
+                                    g.date < game.date and g.season == game.season and g.away_team.name ==
+                                    game.away_team.name]
         try:
             home_team_win_pct_at_home = len([g for g in home_team_previous_games if
-                                             g.home_team.name == game.home_team.name and (
-                                                     g.home_team.scores.get(GamePeriod.TOTAL) > g.away_team.scores.get(
-                                                 GamePeriod.TOTAL))]) / len(home_team_previous_games)
+                                             int(g.home_team.scores.get(GamePeriod.TOTAL)) > int(
+                                                 g.away_team.scores.get(GamePeriod.TOTAL))]) / len(
+                home_team_previous_games)
             away_team_win_pct_at_away = len([g for g in away_team_previous_games if
-                                             g.away_team.name == game.away_team.name and (
-                                                     g.away_team.scores.get(GamePeriod.TOTAL) > g.home_team.scores.get(
-                                                 GamePeriod.TOTAL))]) / len(away_team_previous_games)
+                                             int(g.away_team.scores.get(GamePeriod.TOTAL)) > int(
+                                                 g.home_team.scores.get(GamePeriod.TOTAL))]) / len(
+                away_team_previous_games)
             return home_team_win_pct_at_home - away_team_win_pct_at_away
         except ZeroDivisionError:
             return 0.0
@@ -267,28 +289,31 @@ class ReadGames:
     def get_team_record_differential(self, game: Game) -> float:
         """
         Returns the teams record differential at this point of the season (before this game) as a float of games won
-        against all
-        games played
+        against all games played
+
+        This method may be used to normalize the effects of the other features. This may be desirable in instances where
+        the disparity in record between the teams is large so the effects of other in game features are lowered.
         """
-        home_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
-                g.home_team == game.home_team or g.away_team == game.home_team)]
-        away_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
-                g.home_team == game.away_team or g.away_team == game.away_team)]
+        home_team_previous_games = [g for g in self.sorted_games if g.date < game.date and g.season == game.season and (
+                g.home_team.name == game.home_team.name or g.away_team.name == game.home_team.name)]
+        away_team_previous_games = [g for g in self.sorted_games if g.date < game.date and g.season == game.season and (
+                g.home_team.name == game.away_team.name or g.away_team.name == game.away_team.name)]
         home_team_wins = [g for g in home_team_previous_games if (
-                g.home_team == game.home_team and g.home_team.scores.get(GamePeriod.TOTAL) > g.away_team.scores.get(
-            GamePeriod.TOTAL)) or (g.away_team == game.home_team and g.away_team.scores.get(
-            GamePeriod.TOTAL) > g.home_team.scores.get(GamePeriod.TOT))]
+                g.home_team.name == game.home_team.name and int(g.home_team.scores.get(GamePeriod.TOTAL)) > int(
+            g.away_team.scores.get(GamePeriod.TOTAL))) or (g.away_team.name == game.home_team.name and int(
+            g.away_team.scores.get(GamePeriod.TOTAL)) > int(g.home_team.scores.get(GamePeriod.TOTAL)))]
         away_team_wins = [g for g in away_team_previous_games if (
-                g.home_team == game.home_team and g.home_team.scores.get(GamePeriod.TOTAL) > g.away_team.scores.get(
-            GamePeriod.TOTAL)) or (g.away_team == game.home_team and g.away_team.scores.get(
-            GamePeriod.TOTAL) > g.home_team.scores.get(GamePeriod.TOT))]
+                g.home_team.name == game.away_team.name and int(g.home_team.scores.get(GamePeriod.TOTAL)) > int(
+            g.away_team.scores.get(GamePeriod.TOTAL))) or (g.away_team.name == game.home_team.name and int(
+            g.away_team.scores.get(GamePeriod.TOTAL)) > int(g.home_team.scores.get(GamePeriod.TOTAL)))]
         try:
+            # If the difference between home record and away record is large in either direction, then we want a LOW
+            # weight for this games features since the features may not have as much determination in the outcome
             home_team_record = len(home_team_wins) / len(home_team_previous_games)
             away_team_record = len(away_team_wins) / len(away_team_previous_games)
+            return 1 / (home_team_record - away_team_record)
         except ZeroDivisionError:
-            home_team_record = 0.0
-            away_team_record = 0.0
-        return home_team_record - away_team_record
+            return 1.0
 
     def determine_rebound_differential(self, game: Game) -> float:
         return game.home_team.team_stats.get(PlayerStatTypes.TRB) - game.away_team.team_stats.get(PlayerStatTypes.TRB)

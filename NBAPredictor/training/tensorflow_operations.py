@@ -19,17 +19,20 @@ class TensorflowOperations:
 
     def __init__(self, league: League, num_epochs: int, learning_rate: float, nn_shape: List[int], season: str,
             split: float, outfile: str, model_dir: str, features: List[str], logger: logging,
-            mode: str = DEFAULT_METHOD):
+            mode: str = DEFAULT_METHOD, normalize_weights: bool = False):
         self.mode = mode
         self.leauge = league
         self.num_epochs = num_epochs
         self.learning_rate = learning_rate
         self.nn_shape = nn_shape
         self.model_dir = model_dir
+        self.normalize_weights = normalize_weights
         if self.mode == "SVM":
-            self.parsed_season = ReadGames(self.leauge, season, split, logger, features, svm_compat=True)
+            self.parsed_season = ReadGames(self.leauge, season, split, logger, features, svm_compat=True,
+                                           normalize_weights=self.normalize_weights)
         else:
-            self.parsed_season = ReadGames(self.leauge, season, split, logger, features, svm_compat=False)
+            self.parsed_season = ReadGames(self.leauge, season, split, logger, features, svm_compat=False,
+                                           normalize_weights=self.normalize_weights)
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
         if self.mode == "SVM":
@@ -45,6 +48,16 @@ class TensorflowOperations:
                                                                       y=self.parsed_season.testing_labels, num_epochs=1,
                                                                       shuffle=False)
         self.logger = logger
+        if self.mode == "SVM":
+            self.logger.info(f"Running SVC on the {season} NBA Season(s) for "
+                             f"{self.num_epochs} epochs with the following input features used: "
+                             f"{self.parsed_season.features}")
+        else:
+            self.logger.info(f"Running DNN on the {season} NBA Season(s) for"
+                             f" {self.num_epochs} "
+                             f"epochs with the following NN shape: {self.nn_shape} and the following input "
+                             f"features: "
+                             f"{self.parsed_season.features}")
 
     def create_feature_columns(self):
         feature_cols = list()
@@ -54,11 +67,21 @@ class TensorflowOperations:
 
     def create_model(self):
         if self.mode == "DNN":
-            return tf.estimator.DNNClassifier(model_dir=self.model_dir, hidden_units=self.nn_shape,
-                                              feature_columns=self.feature_cols, n_classes=2,
-                                              label_vocabulary=['H', 'A'],
-                                              optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
-                                                  learning_rate=self.learning_rate, l1_regularization_strength=0.001))
+            if self.normalize_weights:
+                return tf.estimator.DNNClassifier(model_dir=self.model_dir, hidden_units=self.nn_shape,
+                                                  feature_columns=self.feature_cols, n_classes=2,
+                                                  label_vocabulary=['H', 'A'],
+                                                  weight_column=tf.feature_column.numeric_column('weight'),
+                                                  optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
+                                                      learning_rate=self.learning_rate,
+                                                      l1_regularization_strength=0.001))
+            else:
+                return tf.estimator.DNNClassifier(model_dir=self.model_dir, hidden_units=self.nn_shape,
+                                                  feature_columns=self.feature_cols, n_classes=2,
+                                                  label_vocabulary=['H', 'A'],
+                                                  optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
+                                                      learning_rate=self.learning_rate,
+                                                      l1_regularization_strength=0.001))
         elif self.mode == "SVM":
             return svm.SVC(kernel='rbf')
         else:
