@@ -18,12 +18,12 @@ POSSIBLE_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveReboun
                      "BestPlayerSpread", "TeamRecordSpread", "StealSpread", "BlockSpread", "PersonalFoulSpread",
                      "TrueShootingPercentSpread", "ThreePointRateSpread", "FreeThrowRateSpread",
                      "OffensiveRatingSpread", "DefensiveRatingSpread", "AssistToTurnoverSpread",
-                     "StealToTurnoverSpread", "HOBSpread", "ExperienceSpread", "HomeOrAway"]
+                     "StealToTurnoverSpread", "HOBSpread", "ExperienceSpread", "HomeFieldAdvantage"]
 
 DEFAULT_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveReboundSpread", "AssistSpread",
                     "TurnoverSpread", "FieldGoalPercentSpread", "ThreePointPercentSpread", "FreeThrowPercentSpread",
                     "FieldGoalsAttemptedSpread", "ThreePointsAttemptedSpread", "FreeThrowsAttemptedSpread",
-                    "BestPlayerSpread", "HomeOrAway"]
+                    "BestPlayerSpread", "HomeFieldAdvantage"]
 
 
 def determine_best_player_from_team(team: Team) -> Player:
@@ -141,8 +141,8 @@ class ReadGames:
             return self.determine_hob_spread_spread(game)
         elif name == "ExperienceSpread":
             return self.determine_experience_spread(game)
-        elif name == "HomeOrAway":
-            return 1.0
+        elif name == "HomeFieldAdvantage":
+            return self.determine_home_field_advantage_spread(game)
         else:
             return 0.0
 
@@ -156,6 +156,28 @@ class ReadGames:
         away_team_best_player = determine_best_player_from_team(game.away_team)
         return home_team_best_player.stats.get(PlayerStatTypes.FIC) - away_team_best_player.stats.get(
             PlayerStatTypes.FIC)
+
+    def determine_home_field_advantage_spread(self, game: Game) -> float:
+        """
+        Calculates the percent of games the home team usually wins subtracted by the percent of games the away team
+        usually wins on the road. So a positive weight means that the home team has a higher chance to win based off
+        their location and a negative value means that the home field advantage feature does not matter as the away
+        team is better
+        """
+        home_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
+                g.home_team == game.home_team or g.away_team == game.home_team)]
+        away_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
+                g.home_team == game.away_team or g.away_team == game.away_team)]
+        try:
+            home_team_win_pct_at_home = len([g for g in home_team_previous_games if g.home_team == game.home_team and (
+                    g.home_team.scores.get(GamePeriod.TOTAL) > g.away_team.scores.get(GamePeriod.TOTAL))]) / len(
+                home_team_previous_games)
+            away_team_win_pct_at_away = len([g for g in away_team_previous_games if g.away_team == game.away_team and (
+                    g.away_team.scores.get(GamePeriod.TOTAL) > g.home_team.scores.get(GamePeriod.TOTAL))]) / len(
+                away_team_previous_games)
+            return home_team_win_pct_at_home - away_team_win_pct_at_away
+        except ZeroDivisionError:
+            return 0.0
 
     def determine_experience_spread(self, game: Game) -> float:
         """
