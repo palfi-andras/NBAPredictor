@@ -87,6 +87,7 @@ class ReadGames:
         self.logger = logger
         self.normalize_weights = normalize_weights
         seasons = [s for i, s in enumerate(check_for_multiple_seasons(season)) if s in self.leauge.seasons_dict]
+        self.logger.info(f"Using the following NBA seasons: {seasons}")
         assert all(e in POSSIBLE_FEATURES for e in features)
         self.features = features
         if len(seasons) == 1:
@@ -116,26 +117,34 @@ class ReadGames:
             testing_features.setdefault(label, list())
         for x in range(0, self.training_size):
             game = self.sorted_games[x]
+            self.logger.info(f"Extracting requested features for game {game.code}")
             training_labels.append(self.get_winner(game))
             for feature in self.features:
                 training_features[feature].append(self.map_feature_name_to_actual_value(feature, game))
             if self.normalize_weights:
                 training_features.setdefault("weight", list())
-                training_features["weight"].append(self.map_feature_name_to_actual_value("TeamRecordSpread", game))
+                normalized_game_value = self.map_feature_name_to_actual_value("TeamRecordSpread", game)
+                self.logger.info(f"Calculated the normalized game value to be {normalized_game_value}.")
+                training_features["weight"].append(normalized_game_value)
         for x in range(self.training_size + 1, len(self.sorted_games)):
             game = self.sorted_games[x]
+            self.logger.info(f"Extracting requested features for game {game.code}")
             testing_labels.append(self.get_winner(game))
             for feature in self.features:
                 testing_features[feature].append(self.map_feature_name_to_actual_value(feature, game))
             if self.normalize_weights:
                 testing_features.setdefault("weight", list())
-                testing_features["weight"].append(self.map_feature_name_to_actual_value("TeamRecordSpread", game))
+                normalized_game_value = self.map_feature_name_to_actual_value("TeamRecordSpread", game)
+                self.logger.info(f"Calculated the normalized game value to be {normalized_game_value}.")
+                testing_features["weight"].append(normalized_game_value)
         for item in training_features:
             if item != "weight":
+                self.logger.info(f"Centering feature set {item} for training data...")
                 training_features[item] = center_values(training_features[item])
             training_features[item] = np.array(training_features[item])
         for item in testing_features:
             if item != "weight":
+                self.logger.info(f"Centering feature set {item} for testing data...")
                 testing_features[item] = center_values(testing_features[item])
             testing_features[item] = np.array(testing_features[item])
         training_labels = np.array([label for label in training_labels])
