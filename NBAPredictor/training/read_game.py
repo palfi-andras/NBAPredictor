@@ -59,18 +59,38 @@ def center_numpy_features(values: np.array) -> np.array:
         return values
 
 
+def check_for_multiple_seasons(seasons: str) -> List[str]:
+    start_year = int(seasons[2:4])
+    end_year = int(seasons[-2:])
+    season_list = list()
+    if (end_year - start_year) > 1:
+        num_years = end_year - start_year
+        for x in range(start_year, start_year + num_years):
+            season_list.append(f"20{x}-20{x + 1}")
+    else:
+        season_list.append(seasons)
+    return season_list
+
+
 class ReadGames:
 
     def __init__(self, leauge: League, season: str, split: float, logger: logging,
             features: List[str] = DEFAULT_FEATURES, svm_compat=False):
         self.leauge = leauge
         self.logger = logger
-        assert season in self.leauge.seasons_dict, f"Cant find season {season}"
+        seasons = [s for i, s in enumerate(check_for_multiple_seasons(season)) if s in self.leauge.seasons_dict]
         assert all(e in POSSIBLE_FEATURES for e in features)
         self.features = features
-        self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
-        self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
-                                   key=lambda x: re.sub(r"[A-Z]", "", x.code))
+        if len(seasons) == 1:
+            self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
+            self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
+                                       key=lambda x: re.sub(r"[A-Z]", "", x.code))
+        else:
+            self.training_size = round(sum(len(self.leauge.seasons_dict[s]) for s in seasons) * split)
+            self.sorted_games = list()
+            for s in seasons:
+                self.sorted_games.extend(
+                    sorted(self.leauge.seasons_dict[s].__iter__(), key=lambda x: re.sub(r"[A-Z]", "", x.code)))
         if not svm_compat:
             self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
                 self.parse_whole_season()

@@ -88,15 +88,14 @@ if __name__ == '__main__':
         read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
         selector = AutomatedSelection(read_stats, strategy=parsed_configs.feature_selection_strategy,
                                       nn_shape=parsed_configs.nn_shape)
-        # Todo fix this miesage (should print the current ML appraoch not just DNN all the time
         if parsed_configs.method == "DNN":
-            logger.info(f"Experiment #{x + 1}. Running DNN on the {parsed_configs.season}NBA Season for"
+            logger.info(f"Experiment #{x + 1}. Running DNN on the {parsed_configs.season} NBA Season(s) for"
                         f" {parsed_configs.epochs} "
                         f"epochs with the following NN shape: {selector.nn_shape} and the following input "
                         f"features: "
                         f"{selector.features}")
         else:
-            logger.info(f"Experiment #{x + 1}, Running SVC on the {parsed_configs.season} NBA Season for "
+            logger.info(f"Experiment #{x + 1}, Running SVC on the {parsed_configs.season} NBA Season(s) for "
                         f"{parsed_configs.epochs} epochs with the following input features used: {selector.features}")
 
         tfops = TensorflowOperations(league=league, num_epochs=parsed_configs.epochs,
