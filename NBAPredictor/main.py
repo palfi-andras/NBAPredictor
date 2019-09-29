@@ -31,6 +31,8 @@ class ParsedConfigs:
             self.nn_shape = None
         else:
             self.nn_shape = [int(x) for x in self.configs["DEFAULT"]["NN_SHAPE"].split()]
+        self.method = self.configs["DEFAULT"]["METHOD"]
+        assert self.method in ["DNN", "SVM"]
         self.epochs = int(self.configs["DEFAULT"]["EPOCHS"])
         self.learning_rate = float(self.configs["DEFAULT"]["LEARNING_RATE"])
         self.train_size = float(self.configs["DEFAULT"]["TRAIN_SIZE"])
@@ -86,16 +88,21 @@ if __name__ == '__main__':
         read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
         selector = AutomatedSelection(read_stats, strategy=parsed_configs.feature_selection_strategy,
                                       nn_shape=parsed_configs.nn_shape)
-        logger.info(f"Experiment #{x + 1}. Running DNN on the {parsed_configs.season}NBA Season for"
-                    f" {parsed_configs.epochs} "
-                    f"epochs with the following NN shape: {selector.nn_shape} and the following input "
-                    f"features: "
-                    f"{selector.features}")
+        # Todo fix this miesage (should print the current ML appraoch not just DNN all the time
+        if parsed_configs.method == "DNN":
+            logger.info(f"Experiment #{x + 1}. Running DNN on the {parsed_configs.season}NBA Season for"
+                        f" {parsed_configs.epochs} "
+                        f"epochs with the following NN shape: {selector.nn_shape} and the following input "
+                        f"features: "
+                        f"{selector.features}")
+        else:
+            logger.info(f"Experiment #{x + 1}, Running SVC on the {parsed_configs.season} NBA Season for "
+                        f"{parsed_configs.epochs} epochs with the following input features used: {selector.features}")
 
         tfops = TensorflowOperations(league=league, num_epochs=parsed_configs.epochs,
                                      learning_rate=parsed_configs.learning_rate, nn_shape=selector.nn_shape,
                                      season=parsed_configs.season, split=parsed_configs.train_size,
                                      outfile=parsed_configs.stat_location, model_dir=f"{parsed_configs.model_dir}/"
                                                                                      f"{selector.model_name}",
-                                     features=selector.features, logger=logger)
-        tfops.run_neural_network()
+                                     features=selector.features, logger=logger, mode=parsed_configs.method)
+        tfops.run()

@@ -45,10 +45,24 @@ def center_values(values: List[float]) -> List[float]:
         return values
 
 
+def center_numpy_features(values: np.array) -> np.array:
+    try:
+        with np.nditer(values, op_flags=['readwrite']) as it:
+            for i, x in enumerate(it):
+                current_col = i % values.shape[1]
+                col_vals = values[:, current_col]
+                col_avg = np.sum(col_vals) / col_vals.size
+                col_std_dev = stdev(col_vals.tolist())
+                x[...] = (x - col_avg) / col_std_dev
+        return values
+    except ZeroDivisionError:
+        return values
+
+
 class ReadGames:
 
     def __init__(self, leauge: League, season: str, split: float, logger: logging,
-            features: List[str] = DEFAULT_FEATURES):
+            features: List[str] = DEFAULT_FEATURES, svm_compat=False):
         self.leauge = leauge
         self.logger = logger
         assert season in self.leauge.seasons_dict, f"Cant find season {season}"
@@ -57,8 +71,12 @@ class ReadGames:
         self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
         self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
                                    key=lambda x: re.sub(r"[A-Z]", "", x.code))
-        self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-            self.parse_whole_season()
+        if not svm_compat:
+            self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
+                self.parse_whole_season()
+        else:
+            self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
+                self.parse_whole_season_svm_format()
 
     def parse_whole_season(self):
         training_features = dict()
@@ -86,6 +104,37 @@ class ReadGames:
             testing_features[item] = np.array(testing_features[item])
         training_labels = np.array([label for label in training_labels])
         testing_labels = np.array([label for label in testing_labels])
+        self.logger.info(f"Number of games used for training: {len(training_labels)}")
+        self.logger.info(f"Number of games used for testing: {len(testing_labels)}")
+        return training_features, training_labels, testing_features, testing_labels
+
+    def parse_whole_season_svm_format(self):
+        training_features = None
+        training_labels = np.array([])
+        testing_features = None
+        testing_labels = np.array([])
+        for x in range(0, self.training_size):
+            game = self.sorted_games[x]
+            training_labels = np.append(training_labels, [self.get_winner(game)])
+            game_array = np.array([])
+            for feature in self.features:
+                game_array = np.append(game_array, [self.map_feature_name_to_actual_value(feature, game)])
+            if training_features is None:
+                training_features = game_array
+            else:
+                training_features = np.vstack((training_features, game_array))
+        for x in range(self.training_size + 1, len(self.sorted_games)):
+            game = self.sorted_games[x]
+            testing_labels = np.append(testing_labels, [self.get_winner(game)])
+            game_array = np.array([])
+            for feature in self.features:
+                game_array = np.append(game_array, [self.map_feature_name_to_actual_value(feature, game)])
+            if testing_features is None:
+                testing_features = game_array
+            else:
+                testing_features = np.vstack((testing_features, game_array))
+        testing_features = center_numpy_features(testing_features)
+        training_features = center_numpy_features(training_features)
         self.logger.info(f"Number of games used for training: {len(training_labels)}")
         self.logger.info(f"Number of games used for testing: {len(testing_labels)}")
         return training_features, training_labels, testing_features, testing_labels
@@ -165,16 +214,18 @@ class ReadGames:
         team is better
         """
         home_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
-                g.home_team == game.home_team or g.away_team == game.home_team)]
+                (g.home_team.name == game.home_team.name) or (g.away_team.name == game.home_team.name))]
         away_team_previous_games = [g for g in self.sorted_games if g.date < game.date and (
-                g.home_team == game.away_team or g.away_team == game.away_team)]
+                (g.home_team.name == game.away_team.name) or (g.away_team.name == game.away_team.name))]
         try:
-            home_team_win_pct_at_home = len([g for g in home_team_previous_games if g.home_team == game.home_team and (
-                    g.home_team.scores.get(GamePeriod.TOTAL) > g.away_team.scores.get(GamePeriod.TOTAL))]) / len(
-                home_team_previous_games)
-            away_team_win_pct_at_away = len([g for g in away_team_previous_games if g.away_team == game.away_team and (
-                    g.away_team.scores.get(GamePeriod.TOTAL) > g.home_team.scores.get(GamePeriod.TOTAL))]) / len(
-                away_team_previous_games)
+            home_team_win_pct_at_home = len([g for g in home_team_previous_games if
+                                             g.home_team.name == game.home_team.name and (
+                                                     g.home_team.scores.get(GamePeriod.TOTAL) > g.away_team.scores.get(
+                                                 GamePeriod.TOTAL))]) / len(home_team_previous_games)
+            away_team_win_pct_at_away = len([g for g in away_team_previous_games if
+                                             g.away_team.name == game.away_team.name and (
+                                                     g.away_team.scores.get(GamePeriod.TOTAL) > g.home_team.scores.get(
+                                                 GamePeriod.TOTAL))]) / len(away_team_previous_games)
             return home_team_win_pct_at_home - away_team_win_pct_at_away
         except ZeroDivisionError:
             return 0.0
