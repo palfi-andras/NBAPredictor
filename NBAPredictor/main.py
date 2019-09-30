@@ -92,11 +92,12 @@ if __name__ == '__main__':
         read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
         selector = AutomatedSelection(read_stats, strategy=parsed_configs.feature_selection_strategy,
                                       nn_shape=parsed_configs.nn_shape)
+        model_name = f"{parsed_configs.model_dir}/{selector.model_name}" if not parsed_configs.normalize_weights else\
+            f"{parsed_configs.model_dir}/{selector.model_name}_normalized"
         tfops = TensorflowOperations(league=league, num_epochs=parsed_configs.epochs,
                                      learning_rate=parsed_configs.learning_rate, nn_shape=selector.nn_shape,
                                      season=parsed_configs.season, split=parsed_configs.train_size,
-                                     outfile=parsed_configs.stat_location, model_dir=f"{parsed_configs.model_dir}/"
-                                                                                     f"{selector.model_name}",
+                                     outfile=parsed_configs.stat_location, model_dir=model_name,
                                      features=selector.features, logger=logger, mode=parsed_configs.method,
                                      normalize_weights=parsed_configs.normalize_weights)
         tfops.run()

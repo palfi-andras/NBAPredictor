@@ -60,10 +60,7 @@ class TensorflowOperations:
                              f"{self.parsed_season.features}")
 
     def create_feature_columns(self):
-        feature_cols = list()
-        for item in self.parsed_season.features:
-            feature_cols.append(tf.feature_column.numeric_column(key=item))
-        return feature_cols
+        return [tf.feature_column.numeric_column(key=item) for item in self.parsed_season.features]
 
     def create_model(self):
         if self.mode == "DNN":

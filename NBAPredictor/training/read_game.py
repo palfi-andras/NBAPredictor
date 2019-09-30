@@ -1,6 +1,7 @@
 import re
 from typing import List
 import logging
+import time
 
 import numpy as np
 from statistics import stdev
@@ -83,6 +84,7 @@ class ReadGames:
 
     def __init__(self, leauge: League, season: str, split: float, logger: logging,
             features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False):
+        start_time = time.time()
         self.leauge = leauge
         self.logger = logger
         self.normalize_weights = normalize_weights
@@ -106,6 +108,7 @@ class ReadGames:
         else:
             self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
                 self.parse_whole_season_svm_format()
+        self.logger.info(f"Prepared all data sets in {time.time() - start_time} seconds")
 
     def parse_whole_season(self):
         training_features = dict()
@@ -138,14 +141,12 @@ class ReadGames:
                 self.logger.info(f"Calculated the normalized game value to be {normalized_game_value}.")
                 testing_features["weight"].append(normalized_game_value)
         for item in training_features:
-            if item != "weight":
-                self.logger.info(f"Centering feature set {item} for training data...")
-                training_features[item] = center_values(training_features[item])
+            self.logger.info(f"Centering feature set {item} for training data...")
+            training_features[item] = center_values(training_features[item])
             training_features[item] = np.array(training_features[item])
         for item in testing_features:
-            if item != "weight":
-                self.logger.info(f"Centering feature set {item} for testing data...")
-                testing_features[item] = center_values(testing_features[item])
+            self.logger.info(f"Centering feature set {item} for testing data...")
+            testing_features[item] = center_values(testing_features[item])
             testing_features[item] = np.array(testing_features[item])
         training_labels = np.array([label for label in training_labels])
         testing_labels = np.array([label for label in testing_labels])
