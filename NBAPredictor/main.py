@@ -86,7 +86,7 @@ if __name__ == '__main__':
     logger.addHandler(fh)
     if parsed_configs.mode == "Analyze":
         read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
-        read_stats.log_best_performer()
+        read_stats.get_n_best_instances()
         exit(0)
     for x in range(0, run_size):
         read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)

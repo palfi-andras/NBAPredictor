@@ -2,6 +2,9 @@ from enum import Enum
 
 
 class GamePeriod(Enum):
+    """
+    An enum to represent the various game periods in any given NBA game
+    """
     FIRST_QUARTER = 1
     SECOND_QUARTER = 2
     THIRD_QUARTER = 3
@@ -14,6 +17,24 @@ class GamePeriod(Enum):
 
 
 def convert_to_game_period(char: str) -> GamePeriod:
+    """
+    Converts a string into the proper GamePeriod variable
+
+    Parameters
+    ----------
+    char: str
+        The characters to to convert into a GamePeriod entry
+
+    Raises
+    ------
+    RuntimeError
+        If the characters do not match one of the entries in GamePeriod
+
+    Returns
+    -------
+    GamePeriod
+        One of the entries in GamePeriod pertaining to the period that char represents
+    """
     if char == '1':
         return GamePeriod.FIRST_QUARTER
     elif char == '2':
@@ -33,4 +54,4 @@ def convert_to_game_period(char: str) -> GamePeriod:
     elif char == '4OT':
         return GamePeriod.QOT
     else:
-        raise Exception(f"Unrecognized char: {char}")
+        raise RuntimeError(f"Unrecognized char: {char}")

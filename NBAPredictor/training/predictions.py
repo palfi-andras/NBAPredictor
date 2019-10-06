@@ -12,9 +12,92 @@ from team import Team
 
 
 class Predictions:
+    """
+    The Predictions is class is tasked with taking the predicted outcomes from either Tensorflow or sklearn and
+    running analysis on the outcomes across all of the epochs. Log important data such as the accuracy and precision
+    of each instance in the epoch as well as the average across all epochs at the end.
+
+    At the end, also write to JSON the features used for this program execution, the topology used, the average
+    accuracy, precision, etc, along with the best preforming instance for the epoch. This is done so we can track the
+    progress of NBAPredictor and record how certain models affect the accuracy of the program. This is very useful in
+    the start of this project as the correct features were not known yet so each individual features preformance must
+    be recorded
+
+    Attributes
+    ----------
+    season: str
+        The season that was used for training and testing
+    outfile: str
+        A path for where to write the data about this execution instance of NBAPredictor
+    instance_predictions: dict
+        A dictionary of Game objects to a List of Teams. The list of teams correspond to which team the model
+        predicted to win in that game for each epoch. Note this list should be equal to size num_epochs.
+    labels_used: list
+        The feature labels used for training and testing
+    best_accuracy: float
+        The highest accuracy value every recorded in any program execution of NBAPredictor
+    best_vars: dict
+        A dictionary containing model information about the program execution of NBAPredictor that resulted in the
+        highest accuracy.
+    num_epochs: int
+        The number of epochs or instances the model was trained/tested.
+    nn_shape: list
+        A list of integers corresponding to the NN topology. For example [22, 10] is a 2 layer Network with 22
+        and 10 nodes in the layers.
+    logger: logging
+        The logger for this class
+    svm_compat: bool
+        Pass this flag if the SVM model was run instead of the DNN.
+
+    Methods
+    -------
+    add_dnn_prediction_instance (game: Game, prediction_prob: list)
+        Takes as input a prediction instance from Tensorflow for a particular game. Determines if Tensorflow made the
+        correct choice or not. Log the prediction it made regardless or right/wrong for this game in the the
+        instance_predictions dict.
+    add_dnn_seasonal_prediction_instance
+        Takes as input a list of prediction from TensorFlow and records the prediction by calling
+        add_dnn_prediction_instance. Also keeps track of a confusion matrix for this current instance of runs.
+    add_svm_seasons_prediction_instance
+        Like add_dnn_seasonal_prediction_instance, but for compatibility woth the SVM model.
+    analyze_end_performance
+        For each epoch run, build a confusion matrix and display the results of True Positives, True Negatives,
+        False Positives, False Negatives, Accuracy, Precision, etc. Also display the average at the end for all
+        instances run.
+    write_stats_to_json
+        Takes the output from analyze_end_performance and writes it to JSON. This way, each instance of NBAPredictor
+        is recorded and we can see which ones preformed better than others.
+    """
 
     def __init__(self, season: str, num_epochs: int, nn_shape: List[int], labels_used: List[str], outfile: str,
             logger: logging, svm_compat=False):
+        """
+        Parameters
+        ----------
+        season: str
+            The season that was used for training and testing
+        outfile: str
+            A path for where to write the data about this execution instance of NBAPredictor
+        instance_predictions: dict
+            A dictionary of Game objects to a List of Teams. The list of teams correspond to which team the model
+            predicted to win in that game for each epoch. Note this list should be equal to size num_epochs.
+        labels_used: list
+            The feature labels used for training and testing
+        best_accuracy: float
+            The highest accuracy value every recorded in any program execution of NBAPredictor
+        best_vars: dict
+            A dictionary containing model information about the program execution of NBAPredictor that resulted in the
+            highest accuracy.
+        num_epochs: int
+            The number of epochs or instances the model was trained/tested.
+        nn_shape: list
+            A list of integers corresponding to the NN topology. For example [22, 10] is a 2 layer Network with 22
+            and 10 nodes in the layers.
+        logger: logging
+            The logger for this class
+        svm_compat: bool
+            Pass this flag if the SVM model was run instead of the DNN.
+        """
         self.season = season
         self.outfile = outfile
         self.instance_predictions: Dict[Game, List[Team]] = dict()
@@ -26,7 +109,26 @@ class Predictions:
         self.logger = logger
         self.svm_compat = svm_compat
 
-    def add_dnn_prediction_instance(self, game: Game, prediction_prob: List[float]) -> Tuple:
+    def add_dnn_prediction_instance(self, game: Game, prediction_prob: List[float]) -> Tuple[bool, bool]:
+        """
+        Takes as input a prediction instance from Tensorflow for a particular game. Determines if Tensorflow made the
+        correct choice or not. Log the prediction it made regardless or right/wrong for this game in the the
+        instance_predictions dict.
+
+        Parameters
+        ----------
+        game: Game
+            The game that was predicted
+        prediction_prob: list
+            A list of floats, with length 2, wherein the first element is the odds the Home team wins, and the second
+            element is the odds the away team wins.
+
+        Returns
+        -------
+        tuple
+            This method returns a tuple of bools, wherein the first element represents the actual winner and the
+            second element represents the predicted winner
+        """
         assert len(prediction_prob) == 2, f"There should only be 2 percentages in prediction_prob, found " \
                                           f"{len(prediction_prob)}: {prediction_prob}"
         self.instance_predictions.setdefault(game, list())
@@ -43,7 +145,24 @@ class Predictions:
         return actual_home_team_won, predicted_home_team_won
 
     def add_dnn_seasonal_prediction_instance(self, predictions: List, sorted_games: List[Game],
-            tf_model: tf.estimator.DNNClassifier):
+            tf_model: tf.estimator.DNNClassifier) -> None:
+        """
+        Takes as input a list of prediction from TensorFlow and records the prediction by calling
+        add_dnn_prediction_instance. Also keeps track of a confusion matrix for this current instance of runs.
+
+        Parameters
+        ----------
+        predictions: list
+            List of predictions made for every single game in the testing set
+        sorted_games: list
+            A sorted list of games that we tested against, in chronological order
+        tf_model: tf.estimator.DNNClassifier
+            A reference to the model used, so that weight data and biases can be examined.
+
+        Returns
+        -------
+        None
+        """
         confusion_matrix = [0, 0, 0, 0]
         for i, game in enumerate(sorted_games):
             probabilities = predictions[i]['probabilities']
@@ -56,7 +175,21 @@ class Predictions:
                                   tf_model.get_variable_names()}
             self.logger.info(f"{k} : {v}")
 
-    def add_svm_seasons_prediction_instance(self, predictions: List[str], sorted_games: List[Game]):
+    def add_svm_seasons_prediction_instance(self, predictions: List[str], sorted_games: List[Game]) -> None:
+        """
+        Like add_dnn_seasonal_prediction_instance, but for compatibility woth the SVM model.
+
+        Parameters
+        ----------
+        predictions: list
+            List of predictions made for every single game in the testing set
+        sorted_games: list
+            A sorted list of games that we tested against, in chronological order
+
+        Returns
+        -------
+        None
+        """
         confusion_matrix = [0, 0, 0, 0]
         for i, game in enumerate(sorted_games):
             self.instance_predictions.setdefault(game, list())
@@ -77,7 +210,16 @@ class Predictions:
                 self.best_accuracy = v
             self.logger.info(f"{k} : {v}")
 
-    def analyze_end_performance(self):
+    def analyze_end_performance(self) -> None:
+        """
+        For each epoch run, build a confusion matrix and display the results of True Positives, True Negatives,
+        False Positives, False Negatives, Accuracy, Precision, etc. Also display the average at the end for all
+        instances run
+
+        Returns
+        -------
+        None
+        """
         self.logger.info(f"###### FINAL RESULTS FOR EACH GAME###### \n")
         total_results = [0, 0, 0, 0]
         for game in self.instance_predictions:
@@ -104,7 +246,22 @@ class Predictions:
             self.logger.info(f"{k} : {v}")
         self.write_stats_to_json(final_stats, self.outfile)
 
-    def write_stats_to_json(self, stats: Dict, path: str):
+    def write_stats_to_json(self, stats: Dict, path: str) -> None:
+        """
+        Takes the output from analyze_end_performance and writes it to JSON. This way, each instance of NBAPredictor
+        is recorded and we can see which ones preformed better than others
+
+        Parameters
+        ----------
+        stats: dict
+            Data dump of this entire instance, created by analyze_end_performance
+        path: str
+            File path of where to write the results to.
+
+        Returns
+        -------
+        None
+        """
         if os.path.isfile(path):
             with open(path, 'r') as json_file:
                 prev_data = json.load(json_file)
@@ -143,7 +300,24 @@ class Predictions:
 
 def recursive_build_confusion_matrix(previous: List[int], actual_home_win: bool, predicted_home_win: bool) -> List[int]:
     """
- [ True Positive, False Negative, False Positive, True Negative]
+    A utility function that allows a Confusion Matrix to be built over time. The function expects as input a previous
+    state of the confusion matrix, which is represented as list with the following format:
+     [ True Positive, False Negative, False Positive, True Negative]
+    and a new instance to add, meaning an actual result, and a predicted result.
+
+    Parameters
+    ----------
+    previous: list
+        Previous state of the confusion matrix
+    actual_home_win: bool
+        Whether the home team actually won
+    predicted_home_win: bool
+        Whether the home team was predicted to win
+
+    Returns
+    -------
+    list
+        The state of the confusion matrix
     """
     if predicted_home_win and actual_home_win:
         previous[0] += 1
@@ -157,6 +331,24 @@ def recursive_build_confusion_matrix(previous: List[int], actual_home_win: bool,
 
 
 def analyze_confusion_matrix(confusion_matrix: List[int], num_games: int) -> Dict[str, float]:
+    """
+    Utility function to analyze a confusion matrix.  This function will count the number of true positives,
+    true negatives, false positives, and false negatives. It will return a dict with those numbers along with the
+    accuracy, precision, and error rate.
+
+    Parameters
+    ----------
+    confusion_matrix: list
+        List representation of a confusion matrix
+    num_games: int
+        The number of games there were in the testing set.
+
+    Returns
+    -------
+    dict
+        Stats including: number of true positives,
+    true negatives, false positives, and false negatives and accuracy, precision, and error rate
+    """
     true_positives = confusion_matrix[0]
     false_negatives = confusion_matrix[1]
     false_positives = confusion_matrix[2]

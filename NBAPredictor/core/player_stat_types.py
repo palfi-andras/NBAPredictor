@@ -2,6 +2,10 @@ from enum import Enum
 
 
 class PlayerStatTypes(Enum):
+    """
+    An enum to hold all the types of Stats that NBAPredictor is able to understand, parse, and use for input feature
+    sets in order to train models with.
+    """
     MP = 1  # Minutes Played
     FG = 2  # Field Goals Made
     FGA = 3  # Field Goals Attempted
@@ -43,6 +47,24 @@ class PlayerStatTypes(Enum):
 
 
 def convert_to_player_stat_type(char: str) -> PlayerStatTypes:
+    """
+    Takes a string and converts it to the appropriate PlayerStatType, if any exists.
+
+    Parameters
+    ----------
+    char: str
+        A string that represent a statistical attribute
+
+    Returns
+    -------
+    PlayerStatTypes
+        The corresponding PlayerStatType that was mapped from the char, or None if it cannot be converted
+
+    Raises
+    ------
+    RuntimeError
+        If the characters cannot be converted into a PlayerStatTypes entry
+    """
     if char == 'MP':
         return PlayerStatTypes.MP
     elif char == 'FG':
@@ -120,5 +142,4 @@ def convert_to_player_stat_type(char: str) -> PlayerStatTypes:
     elif char == 'FIC':
         return PlayerStatTypes.FIC
     else:
-        print(f"Unrecognized or non-implemented stat type: {char}")
-        return None
+        raise RuntimeError(f"Unrecognized or non-implemented stat type: {char}")

@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import List, Tuple, Dict, Any
 import logging
 import time
 
@@ -12,6 +12,10 @@ from league import League
 from player import Player
 from player_stat_types import PlayerStatTypes
 from team import Team
+
+# TODO all of these utility functions should probably be brought into a utility class. This class is messy enough as
+# it is and we dont need the extra clutter
+
 
 POSSIBLE_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveReboundSpread", "AssistSpread",
                      "TurnoverSpread", "FieldGoalPercentSpread", "ThreePointPercentSpread", "FreeThrowPercentSpread",
@@ -28,6 +32,19 @@ DEFAULT_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveRebound
 
 
 def determine_best_player_from_team(team: Team) -> Player:
+    """
+    Determines the best player from a given team for an NBAMatch
+
+    Parameters
+    ----------
+    team: Team
+        The team the player is on
+
+    Returns
+    -------
+    Player
+        The player with the highest FIC score
+    """
     best_val = float('-inf')
     best_player = None
     for player in team.players:
@@ -39,6 +56,19 @@ def determine_best_player_from_team(team: Team) -> Player:
 
 
 def center_values(values: List[float]) -> List[float]:
+    """
+    Centers a list of values by subtracting the average and dividing by the stdev for all values in the list
+
+    Parameters
+    ----------
+    values: list
+        The list of values to center
+
+    Returns
+    -------
+    list
+        The same list but with all values centered
+    """
     try:
         avg = sum(values) / len(values)
         return [(x - avg) / stdev(values) for x in values]
@@ -47,6 +77,20 @@ def center_values(values: List[float]) -> List[float]:
 
 
 def center_numpy_features(values: np.array, normalize=True) -> np.array:
+    """
+    Centers a numpy array by subtracting the average and dividing by the stdev for all values in the list
+
+    Parameters
+    ----------
+    values: NumPy Array
+        The array of values
+    normalize: bool
+        Whether to normalize the values in the NumPy Array or not.
+
+    Returns
+    -------
+    The same NumPy array but with centered values
+    """
     try:
         with np.nditer(values, op_flags=['readwrite']) as it:
             for i, x in enumerate(it):
@@ -68,8 +112,27 @@ def center_numpy_features(values: np.array, normalize=True) -> np.array:
 
 
 def check_for_multiple_seasons(seasons: str) -> List[str]:
+    """
+    This utility function is used for when a user selects more than one NBA season to parse, for example 2010-2018.
+    It will break apart the string into the individual year string (2010-2011, 2011-2012, etc) and then return them
+    as a list.
+
+    Parameters
+    ----------
+    seasons: str
+        The selected season(s) to parse
+
+    Returns
+    -------
+    list
+        A list individual NBA seasons to use as input data
+    """
+    proper_syntax = r'20[0-9][0-9]-20[0-9][0-9]'
+    assert re.match(proper_syntax, seasons), f"{seasons} is not a recognized string in the from of " \
+                                             f"{proper_syntax}!"
     start_year = int(seasons[2:4])
     end_year = int(seasons[-2:])
+    assert end_year > start_year, f"The end year {end_year} occurs before the start year {start_year}!"
     season_list = list()
     if (end_year - start_year) > 1:
         num_years = end_year - start_year
@@ -81,9 +144,154 @@ def check_for_multiple_seasons(seasons: str) -> List[str]:
 
 
 class ReadGames:
+    """
+    The ReadGames class is an extremely useful class within NBAPredictor that is tasked with preparing both datasets
+    for training and testing in an abstract enough way so that they can be used with multiple ML approaches (DNN and
+    SVM). This class preprares NumPy Arrays given a subset of data requested from the main League object. It will
+    extract all the features requested and includes option for weight normalizations.
+
+    Attributes
+    ----------
+    league: League
+        The main League object created by the NbaJsonParser that contains ALL historical game data.
+    logger: logging
+        A logger for this class
+    features: list
+        A list of features that will be used for this dataset. When NBAPredictor starts, the features passed in here
+        by the AutomatedSelector will be the only data points extracted from the main League object in order to
+        reduce memory footprint
+    normalize_weights: bool
+        NBAPredictor has an ability to downplay/strengthen certain training or testing examples. It does this by
+        determining how "different" the two teams are. If there is a large talent dispairty, there is a high chance
+        the result of the outcome was because of this talent disparity, not because of any in-game features.
+        Therefore, if the flag is passed, games between teams with a large talent disparity will be "downplayed" as
+        noteworthy examples for training/testing and conversely games between equal caliber teams will be strengthened.
+    training_size: int
+        The amount of games to use for the training subset
+    sorted_games: list
+        A sorted list of games from the subset of seasons requested. The games are listed in chronological order of
+        date played.
+    training_features: dict
+        A dictionary of every feature requested, along with a NumPy Array of every value for that feature for each
+        game in the subset of training games. The array is equal to training_size length.
+    training_labels: list
+        A list of labels indicating the actual outcome of each game in the subset of training games. Valid options
+        are 'H' for home team win or 'A' for away team win. The array is equal to training_size length.
+    testing_features: dict
+        A dictionary of every feature requested, along with a NumPy Array of every value for that feature for each
+        game in the subset of testing games
+    testing_labels: list
+        A list of labels indicating the actual outcome of each game in the subset of testing games. Valid options
+        are 'H' for home team win or 'A' for away team win
+
+    Methods
+    -------
+    parse_whole_season
+        Parses the entire subset of seasons required when this object was intiialized. This will divide that subset
+        of games at the split requested during initialization and extract the features requested. If
+        normalize_weights is True, it will also created the weight column for each training and testing example
+    parse_whole_season_svm_format
+        Exact same behavior as parse_whole_season, but outputs slightly different data structures for compatibility
+        reasons with the SVM model.
+    map_feature_name_to_actual_value (name: str, game: Game)
+        Takes a feature name and calculates that feature value from the given game. This method essentially serves as
+        a wrapper and calls the other internal functions of this class in order to extract the right features from
+        each game
+    get_winner (game: Game)
+        Determines the winner of a given game
+    determine_best_player_spread (game: Game)
+        Determines the spread between the home players best players FIC score and the away best players FIC score
+    determine_home_field_advantage_spread (game: Game)
+        Calculates the percent of games the home team usually wins subtracted by the percent of games the away team
+        usually wins on the road. So a positive weight means that the home team has a higher chance to win based off
+        their location and a negative value means that the home field advantage feature does not matter as the away
+        team is better
+    determine_experience_spread (game: Game)
+        Determines the spread between the home teams players Experience levels and the away teams players Experience
+        levels
+    get_team_record_differential (game: Game)
+        Returns the teams record differential at this point of the season (before this game) as a float of games won
+        against all games played. This method may be used to normalize the effects of the other features. This may be
+        desirable in instances where the disparity in record between the teams is large so the effects of other in
+        game features are lowered. Higher values returned by this function mean that this game is a more noteworth
+        example
+    determine_rebound_differential(game: Game)
+        Determines the difference for rebounds between the two teams.
+    determine_offensive_rebound_differential (game: Game)
+        Determines the difference for offensive rebounds between the two teams.
+    determine_defensive_rebound_differential (game: Game)
+        Determines the difference for defensive rebounds between the two teams.
+    determine_assist_spread (game: Game)
+        Determines the difference for assists between the two teams.
+    determine_turnover_spread (game: Game)
+        Determines the difference for turnovers between the two teams.
+    determine_field_goal_percent_spread (game: Game)
+        Determines the difference for field goal percentage between the two teams.
+    determine_three_point_percent_spread (game: Game)
+        Determines the difference for three point percentage between the two teams.
+    determine_free_throw_percent_spread (game: Game)
+        Determines the difference for free throw percentage between the two teams.
+    determine_field_goals_attempted_spread (game: Game)
+        Determines the difference for field goals attempted between the two teams.
+    determine_three_points_attempted_spread (game: Game)
+        Determines the difference for three points attempted between the two teams.
+    determine_free_throws_attempted_spread (game: Game)
+        Determines the difference for free throws attempted between the two teams.
+    determine_steals_spread (game: Game)
+        Determines the difference for steals between the two teams.
+    determine_blocks_spread (game: Game)
+        Determines the difference for blocks between the two teams.
+    determine_personal_foulds_spread (game: Game)
+        Determines the difference for personal fouls between the two teams.
+    determine_true_shooting_percent_spread (game: Game)
+        Determines the difference for true shooting percentage between the two teams.
+    determine_three_point_rate_spread (game: Game)
+        Determines the difference for three point rate between the two teams.
+    determine_free_throw_rate_spread (game: Game)
+        Determines the difference for free throw rate between the two teams.
+    determine_offensive_rating_spread (game: Game)
+        Determines the difference for offensive rating between the two teams.
+    determine_defensive_rating_spread (game: Game)
+        Determines the difference for defensive rating between the two teams.
+    determine_assist_to_turnover_spread (game: Game)
+        Determines the difference for assist-to-turnover-ratio between the two teams.
+    determine_steal_to_turnover_spread (game: Game)
+        Determines the difference for steal-to-turnover-ratio between the two teams.
+    determine_hob_spread_spread (game: Game)
+        Determines the difference for hands on ball between the two teams.
+    """
 
     def __init__(self, leauge: League, season: str, split: float, logger: logging,
             features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False):
+        """
+        Parameters
+        ----------
+        league: League
+            The main League object created by the NbaJsonParser that contains ALL historical game data.
+        season: str
+            The season, or seasons that should be used for training/testing. Valid options include single seasons
+            such as
+            2010-2011 or ranges such as 2010-2018
+        split: float
+            The split at which to divide all of the games from the seasons requested at for training/testing. Bounded
+            between 0.01 and 0.99
+        logger: logging
+            A logger for this class
+        features: list
+            A list of features that will be used for this dataset. When NBAPredictor starts, the features passed in here
+            by the AutomatedSelector will be the only data points extracted from the main League object in order to
+            reduce memory footprint
+        svm_compat: bool
+            The SVM learning approach within NBAPredictor expects a slightly different format for input data,
+            so pass this flag if the program is being run with the SVM mode.
+        normalize_weights: bool
+            NBAPredictor has an ability to downplay/strengthen certain training or testing examples. It does this by
+            determining how "different" the two teams are. If there is a large talent dispairty, there is a high chance
+            the result of the outcome was because of this talent disparity, not because of any in-game features.
+            Therefore, if the flag is passed, games between teams with a large talent disparity will be "downplayed" as
+            noteworthy examples for training/testing and conversely games between equal caliber teams will be
+            strengthened.
+        """
         start_time = time.time()
         self.leauge = leauge
         self.logger = logger
@@ -91,6 +299,7 @@ class ReadGames:
         seasons = [s for i, s in enumerate(check_for_multiple_seasons(season)) if s in self.leauge.seasons_dict]
         self.logger.info(f"Using the following NBA seasons: {seasons}")
         assert all(e in POSSIBLE_FEATURES for e in features)
+        assert (0.01 < split < 0.99)
         self.features = features
         if len(seasons) == 1:
             self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
@@ -110,7 +319,27 @@ class ReadGames:
                 self.parse_whole_season_svm_format()
         self.logger.info(f"Prepared all data sets in {time.time() - start_time} seconds")
 
-    def parse_whole_season(self):
+    def parse_whole_season(self) -> Tuple[Dict[str, np.array], np.array, Dict[str, np.array], np.array]:
+        """
+        Parses the entire subset of seasons required when this object was initialized. This will divide that subset
+        of games at the split requested during initialization and extract the features requested. If
+        normalize_weights is True, it will also created the weight column for each training and testing example
+
+        Returns
+        -------
+        training_features: dict
+            A dictionary of every feature requested, along with a NumPy Array of every value for that feature for each
+            game in the subset of training games. The array is equal to training_size length.
+        training_lables: NumPy Array
+            A list of labels indicating the actual outcome of each game in the subset of training games. Valid options
+            are 'H' for home team win or 'A' for away team win. The array is equal to training_size length.
+        testing_features: dict
+            A dictionary of every feature requested, along with a NumPy Array of every value for that feature for each
+            game in the subset of testing games
+        testing_labels: NumPy Array
+            A list of labels indicating the actual outcome of each game in the subset of testing games. Valid options
+            are 'H' for home team win or 'A' for away team win
+        """
         training_features = dict()
         training_labels = list()
         testing_features = dict()
@@ -155,6 +384,25 @@ class ReadGames:
         return training_features, training_labels, testing_features, testing_labels
 
     def parse_whole_season_svm_format(self):
+        """
+        Exact same behavior as parse_whole_season, but outputs slightly different data structures for compatibility
+        reasons with the SVM model.
+
+        Returns
+        -------
+        training_features: dict
+            A dictionary of every feature requested, along with a NumPy Array of every value for that feature for each
+            game in the subset of training games. The array is equal to training_size length.
+        training_lables: NumPy Array
+            A list of labels indicating the actual outcome of each game in the subset of training games. Valid options
+            are 'H' for home team win or 'A' for away team win. The array is equal to training_size length.
+        testing_features: dict
+            A dictionary of every feature requested, along with a NumPy Array of every value for that feature for each
+            game in the subset of testing games
+        testing_labels: NumPy Array
+            A list of labels indicating the actual outcome of each game in the subset of testing games. Valid options
+            are 'H' for home team win or 'A' for away team win
+        """
         training_features = None
         training_labels = np.array([])
         testing_features = None
@@ -190,6 +438,29 @@ class ReadGames:
         return training_features, training_labels, testing_features, testing_labels
 
     def map_feature_name_to_actual_value(self, name: str, game: Game) -> float:
+        """
+        Takes a feature name and calculates that feature value from the given game. This method essentially serves as
+        a wrapper and calls the other internal functions of this class in order to extract the right features from
+        each game
+
+        Parameters
+        ----------
+        name: str
+            The feature name to extract the value for
+        game: Game
+            The game object to extract the feature from
+
+        Returns
+        -------
+        float
+            The value of the feature for the given game
+
+        Raises
+        ------
+        RuntimeError
+            If name is not a recognized feature name, an exception is raised
+
+        """
         if name == "ReboundSpread":
             return self.determine_rebound_differential(game)
         elif name == "OffensiveReboundSpread":
@@ -243,14 +514,37 @@ class ReadGames:
         elif name == "HomeFieldAdvantage":
             return self.determine_home_field_advantage_spread(game)
         else:
-            return 0.0
+            raise RuntimeError(f"{name} is not an implemented or recognized feature name!")
 
     def get_winner(self, game: Game):
+        """
+        Determines the winner of a given game
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        str
+            'H' if the home team won, 'A' otherwise.
+        """
         home_team_score = game.home_team.scores.get(GamePeriod.TOTAL)
         away_team_score = game.away_team.scores.get(GamePeriod.TOTAL)
         return 'H' if home_team_score > away_team_score else 'A'
 
     def determine_best_player_spread(self, game: Game) -> float:
+        """
+        Determines the spread between the home players best players FIC score and the away best players FIC score
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         home_team_best_player = determine_best_player_from_team(game.home_team)
         away_team_best_player = determine_best_player_from_team(game.away_team)
         return home_team_best_player.stats.get(PlayerStatTypes.FIC) - away_team_best_player.stats.get(
@@ -262,6 +556,16 @@ class ReadGames:
         usually wins on the road. So a positive weight means that the home team has a higher chance to win based off
         their location and a negative value means that the home field advantage feature does not matter as the away
         team is better
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+            A float that represents "home field advantage". Higher values indicate better odds for the home team
+            winning at home, whereas lower or negative values indicate better odds for the away team.
         """
         home_team_previous_games = [g for g in self.sorted_games if
                                     g.date < game.date and g.season == game.season and g.home_team.name ==
@@ -284,8 +588,17 @@ class ReadGames:
 
     def determine_experience_spread(self, game: Game) -> float:
         """
-      Calculates the difference ebtween each players experience levels
-      """
+        Determines the spread between the home teams players Experience levels and the away teams players Experience
+        levels
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         home_team_experience = 0.0
         away_team_experience = 0.0
         for p in game.home_team.players:
@@ -299,10 +612,19 @@ class ReadGames:
     def get_team_record_differential(self, game: Game) -> float:
         """
         Returns the teams record differential at this point of the season (before this game) as a float of games won
-        against all games played
+        against all games played. This method may be used to normalize the effects of the other features. This may be
+        desirable in instances where the disparity in record between the teams is large so the effects of other in
+        game features are lowered. Higher values returned by this function mean that this game is a more noteworth
+        example
 
-        This method may be used to normalize the effects of the other features. This may be desirable in instances where
-        the disparity in record between the teams is large so the effects of other in game features are lowered.
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+            Essentially, this function returns  1 / (home teams record - away teams record)
         """
         home_team_previous_games = [g for g in self.sorted_games if g.date < game.date and g.season == game.season and (
                 g.home_team.name == game.home_team.name or g.away_team.name == game.home_team.name)]
@@ -326,72 +648,314 @@ class ReadGames:
             return 1.0
 
     def determine_rebound_differential(self, game: Game) -> float:
+        """
+        Determines the difference for rebounds between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.TRB) - game.away_team.team_stats.get(PlayerStatTypes.TRB)
 
     def determine_offensive_rebound_differential(self, game: Game) -> float:
+        """
+        Determines the difference for offensive rebounds between the two teams.
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.ORB) - game.away_team.team_stats.get(PlayerStatTypes.ORB)
 
     def determine_defensive_rebound_differential(self, game: Game) -> float:
+        """
+        Determines the difference for defensive rebounds between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.DRB) - game.away_team.team_stats.get(PlayerStatTypes.DRB)
 
     def determine_assist_spread(self, game: Game) -> float:
+        """
+        Determines the difference for assists between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.AST) - game.away_team.team_stats.get(PlayerStatTypes.AST)
 
     def determine_turnover_spread(self, game: Game) -> float:
+        """
+        Determines the difference for turnovers between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.TOV) - game.away_team.team_stats.get(PlayerStatTypes.TOV)
 
     def determine_field_goal_percent_spread(self, game: Game) -> float:
+        """
+        Determines the difference for field goal percentage between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.FGP) - game.away_team.team_stats.get(PlayerStatTypes.FGP)
 
     def determine_three_point_percent_spread(self, game: Game) -> float:
+        """
+        Determines the difference for three point percentage between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.THREEPP) - game.away_team.team_stats.get(
             PlayerStatTypes.THREEPP)
 
     def determine_free_throw_percent_spread(self, game: Game) -> float:
+        """
+        Determines the difference for free throw percentage between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.FTP) - game.away_team.team_stats.get(PlayerStatTypes.FTP)
 
     def determine_field_goals_attempted_spread(self, game: Game) -> float:
+        """
+        Determines the difference for field goals attempted between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.FGA) - game.away_team.team_stats.get(PlayerStatTypes.FGA)
 
     def determine_three_points_attempted_spread(self, game: Game) -> float:
+        """
+        Determines the difference for three points attempted between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.THREEPA) - game.away_team.team_stats.get(
             PlayerStatTypes.THREEPA)
 
     def determine_free_throws_attempted_spread(self, game: Game) -> float:
+        """
+        Determines the difference for free throws attempted between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.FTA) - game.away_team.team_stats.get(PlayerStatTypes.FTA)
 
     def determine_steals_spread(self, game: Game) -> float:
+        """
+        Determines the difference for steals between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.STL) - game.away_team.team_stats.get(PlayerStatTypes.STL)
 
     def determine_blocks_spread(self, game: Game) -> float:
+        """
+        Determines the difference for blocks between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.BLK) - game.away_team.team_stats.get(PlayerStatTypes.BLK)
 
     def determine_personal_foulds_spread(self, game: Game) -> float:
+        """
+        Determines the difference for personal fouls between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.PF) - game.away_team.team_stats.get(PlayerStatTypes.PF)
 
     def determine_true_shooting_percent_spread(self, game: Game) -> float:
+        """
+        Determines the difference for true shooting percentage between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.TSP) - game.away_team.team_stats.get(PlayerStatTypes.TSP)
 
     def determine_three_point_rate_spread(self, game: Game) -> float:
+        """
+        Determines the difference for three point rate between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.THREEPAR) - game.away_team.team_stats.get(
             PlayerStatTypes.THREEPAR)
 
     def determine_free_throw_rate_spread(self, game: Game) -> float:
+        """
+        Determines the difference for free throw rate between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.FTR) - game.away_team.team_stats.get(PlayerStatTypes.FTR)
 
     def determine_offensive_rating_spread(self, game: Game) -> float:
+        """
+        Determines the difference for offensive rating between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.ORTG) - game.away_team.team_stats.get(PlayerStatTypes.ORTG)
 
     def determine_defensive_rating_spread(self, game: Game) -> float:
+        """
+        Determines the difference for defensive rating between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.DRTF) - game.away_team.team_stats.get(PlayerStatTypes.DRTF)
 
     def determine_assist_to_turnover_spread(self, game: Game) -> float:
+        """
+        Determines the difference for assist-to-turnover-ratio between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.ASTTOV) - game.away_team.team_stats.get(
             PlayerStatTypes.ASTTOV)
 
     def determine_steal_to_turnover_spread(self, game: Game) -> float:
+        """
+        Determines the difference for steal-to-turnover-ratio between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.STLTOV) - game.away_team.team_stats.get(
             PlayerStatTypes.STLTOV)
 
     def determine_hob_spread_spread(self, game: Game) -> float:
+        """
+        Determines the difference for hands on ball between the two teams
+
+        Parameters
+        ----------
+        game: Game
+
+        Returns
+        -------
+        float
+        """
         return game.home_team.team_stats.get(PlayerStatTypes.HOB) - game.away_team.team_stats.get(PlayerStatTypes.HOB)
