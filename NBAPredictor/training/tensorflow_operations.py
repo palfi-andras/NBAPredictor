@@ -77,8 +77,8 @@ class TensorflowOperations:
     """
 
     def __init__(self, league: League, num_epochs: int, learning_rate: float, nn_shape: List[int], season: str,
-            split: float, outfile: str, model_dir: str, features: List[str], logger: logging,
-            mode: str = DEFAULT_METHOD, normalize_weights: bool = False):
+            split: float, outfile: str, model_dir: str, features: List[str], logger: logging, cache_dir: str,
+            mode: str = DEFAULT_METHOD, normalize_weights: bool = False, cache_numpy_structures=False):
         """
         Parameters
         ----------
@@ -119,11 +119,11 @@ class TensorflowOperations:
         self.model_dir = model_dir
         self.normalize_weights = normalize_weights
         if self.mode == "SVM":
-            self.parsed_season = ReadGames(self.leauge, season, split, logger, features, svm_compat=True,
-                                           normalize_weights=self.normalize_weights)
+            self.parsed_season = ReadGames(self.leauge, season, split, logger, cache_dir, features, svm_compat=True,
+                                           normalize_weights=self.normalize_weights, cache=cache_numpy_structures)
         else:
-            self.parsed_season = ReadGames(self.leauge, season, split, logger, features, svm_compat=False,
-                                           normalize_weights=self.normalize_weights)
+            self.parsed_season = ReadGames(self.leauge, season, split, logger, cache_dir, features, svm_compat=False,
+                                           normalize_weights=self.normalize_weights, cache=cache_numpy_structures)
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
         if self.mode == "SVM":

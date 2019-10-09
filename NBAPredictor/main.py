@@ -52,10 +52,10 @@ class ParsedConfigs:
             self.n_best = self.configs["DEFAULT"]["BATCH_RUN_FEATURE_SELECTION_STRATEGY"].split()[1]
         self.log_file = self.configs["DEFAULT"]["LOG_FILE"]
         self.mode = self.configs["DEFAULT"]["MODE"]
-        if self.configs["DEFAULT"]["NORMALIZE_WEIGHTS_ACCORDING_TO_RECORD"] == "True":
-            self.normalize_weights = True
-        else:
-            self.normalize_weights = False
+        self.normalize_weights = True if self.configs["DEFAULT"][
+                                             "NORMALIZE_WEIGHTS_ACCORDING_TO_RECORD"] == "True" else False
+        self.cache = True if self.configs["DEFAULT"]["CACHE"] == "True" else False
+        self.cache_dir = self.configs["DEFAULT"]["NUMPY_CACHED_DATA_DIR"]
 
 
 if __name__ == '__main__':
@@ -99,5 +99,6 @@ if __name__ == '__main__':
                                      season=parsed_configs.season, split=parsed_configs.train_size,
                                      outfile=parsed_configs.stat_location, model_dir=model_name,
                                      features=selector.features, logger=logger, mode=parsed_configs.method,
-                                     normalize_weights=parsed_configs.normalize_weights)
+                                     normalize_weights=parsed_configs.normalize_weights,
+                                     cache_numpy_structures=parsed_configs.cache, cache_dir=parsed_configs.cache_dir)
         tfops.run()

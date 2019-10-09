@@ -1,7 +1,10 @@
 import re
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Union
 import logging
 import time
+import pickle
+import os
+import hashlib
 
 import numpy as np
 from statistics import stdev
@@ -261,8 +264,8 @@ class ReadGames:
         Determines the difference for hands on ball between the two teams.
     """
 
-    def __init__(self, leauge: League, season: str, split: float, logger: logging,
-            features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False):
+    def __init__(self, leauge: League, season: str, split: float, logger: logging, cache_dir: str,
+            features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False, cache=False):
         """
         Parameters
         ----------
@@ -296,28 +299,87 @@ class ReadGames:
         self.leauge = leauge
         self.logger = logger
         self.normalize_weights = normalize_weights
-        seasons = [s for i, s in enumerate(check_for_multiple_seasons(season)) if s in self.leauge.seasons_dict]
-        self.logger.info(f"Using the following NBA seasons: {seasons}")
+        self.seasons = [s for i, s in enumerate(check_for_multiple_seasons(season)) if s in self.leauge.seasons_dict]
+        self.logger.info(f"Using the following NBA seasons: {self.seasons}")
         assert all(e in POSSIBLE_FEATURES for e in features)
         assert (0.01 < split < 0.99)
         self.features = features
-        if len(seasons) == 1:
+        if len(self.seasons) == 1:
             self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
             self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
                                        key=lambda x: re.sub(r"[A-Z]", "", x.code))
         else:
-            self.training_size = round(sum(len(self.leauge.seasons_dict[s]) for s in seasons) * split)
+            self.training_size = round(sum(len(self.leauge.seasons_dict[s]) for s in self.seasons) * split)
             self.sorted_games = list()
-            for s in seasons:
+            for s in self.seasons:
                 self.sorted_games.extend(
                     sorted(self.leauge.seasons_dict[s].__iter__(), key=lambda x: re.sub(r"[A-Z]", "", x.code)))
         if not svm_compat:
-            self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-                self.parse_whole_season()
+            if cache:
+                if self.load_instance(cache_dir):
+                    self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
+                        self.load_instance(
+                        cache_dir)
+                else:
+                    self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
+                        self.parse_whole_season()
+                    self.cache_instance(cache_dir)
+            else:
+                self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
+                    self.parse_whole_season()
         else:
             self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
                 self.parse_whole_season_svm_format()
         self.logger.info(f"Prepared all data sets in {time.time() - start_time} seconds")
+
+    def cache_instance(self, dir: str) -> None:
+        """
+        Writes this instance out to a pickle file so that if a similair instance is started with the same features,
+        we dont have to do all the parsing and normalization again. Note this will only load if you run the same
+        exact features, games, and training split.
+
+        Parameters
+        ----------
+        dir: str
+            Path to a directory where pickle files should be dumped
+
+        Returns
+        -------
+        None
+        """
+        assert self.seasons and self.features and self.training_size and self.sorted_games
+        name = f"instance-{self.training_size}-{len(self.sorted_games)}-" \
+               f"{str(hashlib.sha1(str(self.seasons).encode('utf-8')).hexdigest())}-" \
+               f"{str(hashlib.sha1(str(self.features).encode('utf-8')).hexdigest())}"
+        path = os.path.join(dir, name)
+        with open(path, 'wb') as pickle_file:
+            pickle.dump(self, pickle_file)
+
+    def load_instance(self, dir: str) -> Union[Tuple, None]:
+        """
+        Attempts to load a cached instance of this class and extract the already configured NUMPY structures,
+        so that they do not have to be generated again.
+
+        Parameters
+        ----------
+        dir: str
+            Path to the directory containing instance files
+
+        Returns
+        -------
+        Tuples of training/testing features and labels, or nothing if an instance cant be found0
+        """
+        assert self.seasons and self.features and self.training_size and self.sorted_games
+        name = f"instance-{self.training_size}-{len(self.sorted_games)}-" \
+               f"{str(hashlib.sha1(str(self.seasons).encode('utf-8')).hexdigest())}-" \
+               f"{str(hashlib.sha1(str(self.features).encode('utf-8')).hexdigest())}"
+        path = os.path.join(dir, name)
+        if os.path.isfile(path):
+            with open(path, 'rb') as pickle_file:
+                instance: ReadGames = pickle.load(pickle_file)
+                return instance.training_features, instance.training_labels, instance.testing_features, \
+                       instance.testing_labels
+        return None
 
     def parse_whole_season(self) -> Tuple[Dict[str, np.array], np.array, Dict[str, np.array], np.array]:
         """
