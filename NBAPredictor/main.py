@@ -86,11 +86,11 @@ if __name__ == '__main__':
     ch.setFormatter(formatter)
     logger.addHandler(fh)
     if parsed_configs.mode == "Analyze":
-        read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
+        read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location)
         read_stats.get_n_best_instances()
         exit(0)
     for x in range(0, run_size):
-        read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location, logger=logger)
+        read_stats = ReadStats(parsed_configs.stat_location, parsed_configs.features_location)
         selector = AutomatedSelection(read_stats, strategy=parsed_configs.feature_selection_strategy,
                                       nn_shape=parsed_configs.nn_shape)
         model_name = f"{parsed_configs.model_dir}/{selector.model_name}" if not parsed_configs.normalize_weights else\
@@ -99,7 +99,7 @@ if __name__ == '__main__':
                                      learning_rate=parsed_configs.learning_rate, nn_shape=selector.nn_shape,
                                      season=parsed_configs.season, split=parsed_configs.train_size,
                                      outfile=parsed_configs.stat_location, model_dir=model_name,
-                                     features=selector.features, logger=logger, mode=parsed_configs.method,
+                                     features=selector.features, mode=parsed_configs.method,
                                      normalize_weights=parsed_configs.normalize_weights,
                                      cache_numpy_structures=parsed_configs.cache, cache_dir=parsed_configs.cache_dir,
                                      predict_next_season=parsed_configs.predict_next_season,

@@ -1,9 +1,9 @@
 import json
+import logging
 import os
 import re
 from collections import OrderedDict
 from typing import Tuple, Dict, Any, Set, List
-import logging
 
 
 class ReadStats:
@@ -70,7 +70,7 @@ class ReadStats:
 
     """
 
-    def __init__(self, stats_file: str, feature_file: str, logger: logging):
+    def __init__(self, stats_file: str, feature_file: str):
         """
         Parameters
         ----------
@@ -87,7 +87,7 @@ class ReadStats:
         self.feature_file = feature_file
         self.features = self.write_avg_feature_weight()
         self.best_features = self.get_best_features()
-        self.logger = logger
+        self.logger = logging.getLogger(f"NBAPredictor.{self.__class__.__name__}")
         self.logger.info(
             f"This program has been run {len(self.stats)} times.\n These are the 3 best features so far in predicting "
             f"a home team win correctly: ")

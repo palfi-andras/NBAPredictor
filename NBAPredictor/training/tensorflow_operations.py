@@ -79,9 +79,9 @@ class TensorflowOperations:
     """
 
     def __init__(self, league: League, num_epochs: int, learning_rate: float, nn_shape: List[int], season: str,
-            split: float, outfile: str, model_dir: str, features: List[str], logger: logging, cache_dir: str,
-            mode: str = DEFAULT_METHOD, normalize_weights: bool = False, cache_numpy_structures=False,
-            predict_next_season=False, next_season_csv: str = None):
+            split: float, outfile: str, model_dir: str, features: List[str], cache_dir: str, mode: str = DEFAULT_METHOD,
+            normalize_weights: bool = False, cache_numpy_structures=False, predict_next_season=False,
+            next_season_csv: str = None):
         """
         Parameters
         ----------
@@ -122,7 +122,7 @@ class TensorflowOperations:
          next_season_csv: str
             Path to next seasons CSV file
         """
-        self.logger = logger
+        self.logger = logging.getLogger(f"NBAPredictor.{self.__class__.__name__}")
         self.mode = mode
         self.leauge = league
         self.num_epochs = num_epochs
@@ -136,23 +136,23 @@ class TensorflowOperations:
                 f"Predict Next Season mode can run only for one epoch. Overriding value of {self.num_epochs}")
             self.num_epochs = 1
         if self.mode == "SVM":
-            self.parsed_season = ReadGames(self.leauge, season, split, logger, cache_dir, features, svm_compat=True,
+            self.parsed_season = ReadGames(self.leauge, season, split, cache_dir, features, svm_compat=True,
                                            normalize_weights=self.normalize_weights, cache=cache_numpy_structures)
         else:
-            self.parsed_season = ReadGames(self.leauge, season, split, logger, cache_dir, features, svm_compat=False,
+            self.parsed_season = ReadGames(self.leauge, season, split, cache_dir, features, svm_compat=False,
                                            normalize_weights=self.normalize_weights,
                                            cache=cache_numpy_structures) if not self.predict_next_season else \
                 PredictNextSeason(
-                next_season_csv=next_season_csv, leauge=league, season=season, split=split, logger=logger,
-                cache_dir=cache_dir, features=features, cache=cache_numpy_structures)
+                next_season_csv=next_season_csv, leauge=league, season=season, split=split, cache_dir=cache_dir,
+                features=features, cache=cache_numpy_structures)
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
         if self.mode == "SVM":
             self.predictions = Predictions(season, num_epochs, nn_shape, self.parsed_season.features, outfile,
-                                           logger=logger, svm_compat=True)
+                                           svm_compat=True)
         else:
             self.predictions = Predictions(season, num_epochs, nn_shape, self.parsed_season.features, outfile,
-                                           logger=logger, svm_compat=False)
+                                           svm_compat=False)
         self.train_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.training_features,
                                                                        y=self.parsed_season.training_labels,
                                                                        batch_size=500, num_epochs=None, shuffle=False)

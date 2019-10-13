@@ -20,11 +20,11 @@ class PredictNextSeason(ReadGames):
     simulate the playoffs as well.
     """
 
-    def __init__(self, next_season_csv: str, leauge: League, season: str, split: float, logger: logging, cache_dir: str,
+    def __init__(self, next_season_csv: str, leauge: League, season: str, split: float, cache_dir: str,
             features: List[str], normalize_weights=False, cache=False):
-        super().__init__(leauge=leauge, season=season, split=split, logger=logger, cache_dir=cache_dir,
-                         features=features, svm_compat=False, normalize_weights=normalize_weights, cache=cache,
-                         initialize=False)
+        super().__init__(leauge=leauge, season=season, split=split, cache_dir=cache_dir, features=features,
+                         svm_compat=False, normalize_weights=normalize_weights, cache=cache, initialize=False)
+        self.logger = logging.getLogger(f"NBAPredictor.{self.__class__.__name__}")
         self.next_season_csv = next_season_csv
         self.next_season, self.conferences = self.parse_next_season_csv_file()
         self.averages = None

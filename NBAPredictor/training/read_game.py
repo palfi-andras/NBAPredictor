@@ -266,7 +266,7 @@ class ReadGames:
         Determines the difference for hands on ball between the two teams.
     """
 
-    def __init__(self, leauge: League, season: str, split: float, logger: logging, cache_dir: str,
+    def __init__(self, leauge: League, season: str, split: float, cache_dir: str,
             features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False, cache=False,
             initialize=True):
         """
@@ -298,7 +298,7 @@ class ReadGames:
             noteworthy examples for training/testing and conversely games between equal caliber teams will be
             strengthened.
         """
-        self.logger = logger
+        self.logger = logging.getLogger(f"NBAPredictor.{self.__class__.__name__}")
         start_time = time.time()
         self.logger.info("Loading data set...")
         self.leauge = leauge

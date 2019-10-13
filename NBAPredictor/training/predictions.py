@@ -1,7 +1,7 @@
 import datetime
 import json
-import os
 import logging
+import os
 from typing import Dict, Tuple, List
 
 import tensorflow as tf
@@ -70,7 +70,7 @@ class Predictions:
     """
 
     def __init__(self, season: str, num_epochs: int, nn_shape: List[int], labels_used: List[str], outfile: str,
-            logger: logging, svm_compat=False):
+            svm_compat=False):
         """
         Parameters
         ----------
@@ -106,7 +106,7 @@ class Predictions:
         self.best_vars = None
         self.num_epochs = num_epochs
         self.nn_shape = nn_shape
-        self.logger = logger
+        self.logger = logging.getLogger(f"NBAPredictor.{self.__class__.__name__}")
         self.svm_compat = svm_compat
 
     def add_dnn_prediction_instance(self, game: Game, prediction_prob: List[float]) -> Tuple[bool, bool]:
