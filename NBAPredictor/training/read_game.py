@@ -1,13 +1,13 @@
-import re
-from typing import List, Tuple, Dict, Union
-import logging
-import time
-import pickle
-import os
 import hashlib
+import logging
+import os
+import pickle
+import re
+import time
+from statistics import stdev
+from typing import List, Tuple, Dict, Union
 
 import numpy as np
-from statistics import stdev
 
 from game import Game
 from game_period import GamePeriod
@@ -140,7 +140,9 @@ def check_for_multiple_seasons(seasons: str) -> List[str]:
     if (end_year - start_year) > 1:
         num_years = end_year - start_year
         for x in range(start_year, start_year + num_years):
-            season_list.append(f"20{x}-20{x + 1}")
+            year = x if x > 9 else f"0{x}"
+            next_year = x + 1 if x + 1 > 9 else f"0{x + 1}"
+            season_list.append(f"20{year}-20{next_year}")
     else:
         season_list.append(seasons)
     return season_list
@@ -265,7 +267,8 @@ class ReadGames:
     """
 
     def __init__(self, leauge: League, season: str, split: float, logger: logging, cache_dir: str,
-            features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False, cache=False):
+            features: List[str] = DEFAULT_FEATURES, svm_compat=False, normalize_weights=False, cache=False,
+            initialize=True):
         """
         Parameters
         ----------
@@ -295,15 +298,21 @@ class ReadGames:
             noteworthy examples for training/testing and conversely games between equal caliber teams will be
             strengthened.
         """
-        start_time = time.time()
-        self.leauge = leauge
         self.logger = logger
+        start_time = time.time()
+        self.logger.info("Loading data set...")
+        self.leauge = leauge
         self.normalize_weights = normalize_weights
+        if self.normalize_weights:
+            self.logger.info(f"Normalization is turned on")
+        else:
+            self.logger.info(f"Normalization is turned off")
         self.seasons = [s for i, s in enumerate(check_for_multiple_seasons(season)) if s in self.leauge.seasons_dict]
         self.logger.info(f"Using the following NBA seasons: {self.seasons}")
         assert all(e in POSSIBLE_FEATURES for e in features)
         assert (0.01 < split < 0.99)
         self.features = features
+
         if len(self.seasons) == 1:
             self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
             self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
@@ -314,23 +323,27 @@ class ReadGames:
             for s in self.seasons:
                 self.sorted_games.extend(
                     sorted(self.leauge.seasons_dict[s].__iter__(), key=lambda x: re.sub(r"[A-Z]", "", x.code)))
-        if not svm_compat:
-            if cache:
-                if self.load_instance(cache_dir):
-                    self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-                        self.load_instance(
-                        cache_dir)
+
+        if initialize:
+            self.logger.info(f"Size of training set: {self.training_size}, size of testing set: "
+                             f"{len(self.sorted_games) - self.training_size} ({split * 100}% split)")
+            if not svm_compat:
+                if cache:
+                    if self.load_instance(cache_dir):
+                        self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
+                            self.load_instance(
+                            cache_dir)
+                    else:
+                        self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
+                            self.parse_whole_season()
+                        self.cache_instance(cache_dir)
                 else:
                     self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
                         self.parse_whole_season()
-                    self.cache_instance(cache_dir)
             else:
                 self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-                    self.parse_whole_season()
-        else:
-            self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-                self.parse_whole_season_svm_format()
-        self.logger.info(f"Prepared all data sets in {time.time() - start_time} seconds")
+                    self.parse_whole_season_svm_format()
+            self.logger.info(f"Prepared all data sets in {time.time() - start_time} seconds")
 
     def cache_instance(self, dir: str) -> None:
         """
@@ -578,7 +591,7 @@ class ReadGames:
         else:
             raise RuntimeError(f"{name} is not an implemented or recognized feature name!")
 
-    def get_winner(self, game: Game):
+    def get_winner(self, game: Game) -> str:
         """
         Determines the winner of a given game
 

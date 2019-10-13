@@ -170,20 +170,11 @@ class AutomatedSelection:
 
     def generate_random_nn_shape(self):
         """
-        Generates a random Neural Network shape bounded between 2-4 layers 0-20 neurons at each layers.
+        Generates a random Neural Network shape .
 
         Returns
         -------
         layers: list
             List of a Neural Network shape using the syntax defined above in the top level class doc.
         """
-        layers = []
-        num_layers = random.randint(2, 4)
-        for layer in range(num_layers):
-            if layer == 0:
-                layers.append(random.randint(12, 24))
-            elif layer == 1:
-                layers.append(random.randint(6, 10))
-            else:
-                layers.append(random.randint(2, 4))
-        return layers
+        return [random.randint(8, 50) for x in range(random.randint(2, 5))]

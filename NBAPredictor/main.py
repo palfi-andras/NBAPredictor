@@ -27,10 +27,9 @@ class ParsedConfigs:
         self.configs = configparser.ConfigParser()
         self.configs.read(path)
         self.randomize_nn_shape = bool(self.configs["DEFAULT"]["RANDOMIZE_NN_SHAPE"])
-        if self.randomize_nn_shape == "False":
-            self.nn_shape = None
-        else:
-            self.nn_shape = [int(x) for x in self.configs["DEFAULT"]["NN_SHAPE"].split()]
+
+        self.nn_shape = [int(x) for x in
+                         self.configs["DEFAULT"]["NN_SHAPE"].split()] if self.randomize_nn_shape == "True" else None
         self.method = self.configs["DEFAULT"]["METHOD"]
         assert self.method in ["DNN", "SVM"]
         self.epochs = int(self.configs["DEFAULT"]["EPOCHS"])
@@ -56,6 +55,8 @@ class ParsedConfigs:
                                              "NORMALIZE_WEIGHTS_ACCORDING_TO_RECORD"] == "True" else False
         self.cache = True if self.configs["DEFAULT"]["CACHE"] == "True" else False
         self.cache_dir = self.configs["DEFAULT"]["NUMPY_CACHED_DATA_DIR"]
+        self.predict_next_season = True if self.configs["DEFAULT"]["PREDICT_NEXT_SEASON"] == "True" else False
+        self.next_season_schedule = self.configs["DEFAULT"]["NEXT_SEASON_SCHEDULE"]
 
 
 if __name__ == '__main__':
@@ -100,5 +101,7 @@ if __name__ == '__main__':
                                      outfile=parsed_configs.stat_location, model_dir=model_name,
                                      features=selector.features, logger=logger, mode=parsed_configs.method,
                                      normalize_weights=parsed_configs.normalize_weights,
-                                     cache_numpy_structures=parsed_configs.cache, cache_dir=parsed_configs.cache_dir)
+                                     cache_numpy_structures=parsed_configs.cache, cache_dir=parsed_configs.cache_dir,
+                                     predict_next_season=parsed_configs.predict_next_season,
+                                     next_season_csv=parsed_configs.next_season_schedule)
         tfops.run()
