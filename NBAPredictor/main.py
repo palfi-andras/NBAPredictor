@@ -1,8 +1,12 @@
+#!/usr/bin/env python3
 import configparser
 import logging
 import os
+import sys
 
-from tap import Tap
+sys.path.append(os.path.join(os.path.dirname(__file__), "analyze"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "core"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "training"))
 
 from automated_selection import AutomatedSelection
 from league import load_league
@@ -11,21 +15,14 @@ from read_stats import ReadStats
 from tensorflow_operations import TensorflowOperations
 
 
-class NBAPredictorArguments(Tap):
-    dir: str = './resources/nba'  # Optional path for directory of where JSON
-    # files are located when scraped from basketballrefernce.com
-    rebuild: bool = False  # Pass this flag in to rebuild the library of players and previous games. Whenever the   #
-    # library is built, it is saved so it can be reused again for the next execution of the program. This flag forces
-    # the rebuild of the entire League and will add some time to program startup
-    league_save: str = './resources/league.pkl'  # Location of the league save file (Pickle Object)
-    config_file: str = './resources/config.ini'  # Location of the NBAPredictor Config File
-
-
 class ParsedConfigs:
 
     def __init__(self, path: str):
         self.configs = configparser.ConfigParser()
         self.configs.read(path)
+        self.rebuild = True if self.configs["DEFAULT"]["REBUILD"] == "True" else False
+        self.league_save = self.configs["DEFAULT"]["LEAGUE_PICKLE_OBJECT"]
+        self.nba_json_dir = self.configs["DEFAULT"]["NBA_JSON_GAME_PATH"]
         self.randomize_nn_shape = bool(self.configs["DEFAULT"]["RANDOMIZE_NN_SHAPE"])
 
         self.nn_shape = [int(x) for x in
@@ -60,15 +57,15 @@ class ParsedConfigs:
 
 
 if __name__ == '__main__':
-    args: NBAPredictorArguments = NBAPredictorArguments().parse_args()
-    if not args.rebuild and not os.path.isfile(args.league_save):
-        args.rebuild = True
-    if args.rebuild:
-        league = NBAJsonParser(args.dir).generate_league_object()
-        league.save_league(args.league_save)
+    config_file = './resources/config.ini'
+    parsed_configs = ParsedConfigs(config_file)
+    if not parsed_configs.rebuild and not os.path.isfile(parsed_configs.league_save):
+        parsed_configs.rebuild = True
+    if parsed_configs.rebuild:
+        league = NBAJsonParser(parsed_configs.nba_json_dir).generate_league_object()
+        league.save_league(parsed_configs.league_save)
     else:
-        league = load_league(args.league_save)
-    parsed_configs = ParsedConfigs(args.config_file)
+        league = load_league(parsed_configs.league_save)
     if parsed_configs.batch_run <= 0:
         run_size = 1
         strategy = parsed_configs.feature_selection_strategy

@@ -144,7 +144,7 @@ class TensorflowOperations:
                                            cache=cache_numpy_structures) if not self.predict_next_season else \
                 PredictNextSeason(
                 next_season_csv=next_season_csv, leauge=league, season=season, split=split, cache_dir=cache_dir,
-                features=features, cache=cache_numpy_structures)
+                features=features, cache=False)
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
         if self.mode == "SVM":
