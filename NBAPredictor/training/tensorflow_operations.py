@@ -144,7 +144,7 @@ class TensorflowOperations:
                                            cache=cache_numpy_structures) if not self.predict_next_season else \
                 PredictNextSeason(
                 next_season_csv=next_season_csv, leauge=league, season=season, split=split, cache_dir=cache_dir,
-                features=features, cache=False)
+                features=features, cache=cache_numpy_structures)
         self.feature_cols = self.create_feature_columns()
         self.model = self.create_model()
         if self.mode == "SVM":
@@ -159,6 +159,9 @@ class TensorflowOperations:
         self.test_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.testing_features,
                                                                       y=self.parsed_season.testing_labels, num_epochs=1,
                                                                       shuffle=False)
+        if self.predict_next_season:
+            self.predict_input_function = tf.estimator.inputs.numpy_input_fn(x=self.parsed_season.next_season_data,
+                                                                             num_epochs=1, shuffle=False)
         if self.mode == "SVM":
             self.logger.info(f"Running SVC on the {season} NBA Season(s) for "
                              f"{self.num_epochs} epochs with the following input features used: "
@@ -191,6 +194,7 @@ class TensorflowOperations:
                                                   optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
                                                       learning_rate=self.learning_rate,
                                                       l1_regularization_strength=0.001))
+
             else:
                 return tf.estimator.DNNClassifier(model_dir=self.model_dir, hidden_units=self.nn_shape,
                                                   feature_columns=self.feature_cols, n_classes=2,
@@ -217,19 +221,20 @@ class TensorflowOperations:
                 for x in range(0, self.num_epochs):
                     self.logger.info(f"Running instance #{x + 1}")
                     self.train()
-                    self.evaluate()
+                    acc = self.evaluate()
+                    self.logger.info(f"Accuracy: {acc * 100}")
                     self.get_predictions()
             else:
                 self.logger.info(f"Predicting NBA Season for 2019-2020")
                 self.train()
-                self.evaluate()
+                acc = self.evaluate()
+                self.logger.info(f"Accuracy: {acc * 100}")
                 playoffs: Playoffs = self.get_predictions()
                 while playoffs.generate_test_data_for_playoffs():
-                    testing_features, testing_labels = playoffs.generate_test_data_for_playoffs()
-                    self.test_input_function = tf.estimator.inputs.numpy_input_fn(x=testing_features, y=testing_labels,
-                                                                                  num_epochs=1, shuffle=False)
-                    self.evaluate()
-                    predictions = list(self.model.predict(input_fn=self.test_input_function))
+                    testing_features = playoffs.generate_test_data_for_playoffs()
+                    self.predict_input_function = tf.estimator.inputs.numpy_input_fn(x=testing_features, num_epochs=1,
+                                                                                     shuffle=False)
+                    predictions = list(self.model.predict(input_fn=self.predict_input_function))
                     playoffs.record_playoff_results(predictions)
                 playoffs.log_playoff_results()
                 time.sleep(8)
@@ -258,7 +263,7 @@ class TensorflowOperations:
         else:
             raise RuntimeError(f"{self.mode} is not an implemented or recognized ML strategy in NBAPredictor")
 
-    def evaluate(self) -> None:
+    def evaluate(self) -> float:
         """
         Used by the TensorFlow DNN in order to evaluate the DNN against the test input function
 
@@ -266,7 +271,7 @@ class TensorflowOperations:
         -------
         None
         """
-        self.model.evaluate(input_fn=self.test_input_function)
+        return self.model.evaluate(input_fn=self.test_input_function)
 
     def get_predictions(self) -> Union[None, Playoffs]:
         """
@@ -287,8 +292,8 @@ class TensorflowOperations:
                                    range(start_index, len(self.parsed_season.sorted_games))]
                 self.predictions.add_dnn_seasonal_prediction_instance(predictions, predicted_games, self.model)
             else:
-                predictions = list(self.model.predict(input_fn=self.test_input_function))
-                return self.parsed_season.analyze_end_of_season_predictions(predictions)
+                next_season_predictions = list(self.model.predict(input_fn=self.predict_input_function))
+                return self.parsed_season.analyze_end_of_season_predictions(next_season_predictions)
         elif self.mode == "SVM":
             predictions = self.model.predict(self.parsed_season.testing_features)
             start_index = self.parsed_season.training_size + 1

@@ -54,6 +54,7 @@ class ParsedConfigs:
         self.cache_dir = self.configs["DEFAULT"]["NUMPY_CACHED_DATA_DIR"]
         self.predict_next_season = True if self.configs["DEFAULT"]["PREDICT_NEXT_SEASON"] == "True" else False
         self.next_season_schedule = self.configs["DEFAULT"]["NEXT_SEASON_SCHEDULE"]
+        self.feature_selection_strategy = "Predict" if self.predict_next_season else self.feature_selection_strategy
 
 
 if __name__ == '__main__':

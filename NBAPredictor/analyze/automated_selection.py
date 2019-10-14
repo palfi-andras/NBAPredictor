@@ -2,7 +2,7 @@ import hashlib
 import random
 from typing import List
 
-from read_game import DEFAULT_FEATURES, POSSIBLE_FEATURES
+from read_game import DEFAULT_FEATURES, POSSIBLE_FEATURES, PREDICTION_FEATURES
 from read_stats import ReadStats
 
 
@@ -77,6 +77,8 @@ class AutomatedSelection:
             self.features = self.use_n_best_strategy()
         elif strategy == "UseBest":
             self.features = self.use_best()
+        elif strategy == "Predict":
+            self.features = PREDICTION_FEATURES
         else:
             self.features = DEFAULT_FEATURES
         self.model_name = self.create_model_name()

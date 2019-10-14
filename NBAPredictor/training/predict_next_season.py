@@ -2,7 +2,6 @@ import hashlib
 import logging
 import os
 import pickle
-import random
 from enum import Enum
 from typing import List, Dict, Union, Tuple
 
@@ -23,23 +22,11 @@ class PredictNextSeason(ReadGames):
     def __init__(self, next_season_csv: str, leauge: League, season: str, split: float, cache_dir: str,
             features: List[str], normalize_weights=False, cache=False):
         super().__init__(leauge=leauge, season=season, split=split, cache_dir=cache_dir, features=features,
-                         svm_compat=False, normalize_weights=normalize_weights, cache=cache, initialize=False)
+                         svm_compat=False, normalize_weights=normalize_weights, cache=cache, initialize=True)
         self.logger = logging.getLogger(f"NBAPredictor.{self.__class__.__name__}")
         self.next_season_csv = next_season_csv
         self.next_season, self.conferences = self.parse_next_season_csv_file()
-        self.averages = None
-        if cache:
-            if self.load_instance(cache_dir):
-                self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-                    self.load_instance(
-                    cache_dir)
-            else:
-                self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-                    self.parse_whole_season()
-                self.cache_instance(cache_dir)
-        else:
-            self.training_features, self.training_labels, self.testing_features, self.testing_labels = \
-                self.parse_whole_season()
+        self.next_season_data = self.get_next_season_games()
 
     def parse_next_season_csv_file(self) -> Tuple[List[Dict], Dict[str, List]]:
         assert os.path.isfile(self.next_season_csv), f"Cant find file {self.next_season_csv}"
@@ -85,7 +72,7 @@ class PredictNextSeason(ReadGames):
         with open(path, 'wb') as pickle_file:
             pickle.dump(self, pickle_file)
 
-    def parse_whole_season(self) -> Tuple[Dict[str, np.array], np.array, Dict[str, np.array], np.array]:
+    def get_next_season_games(self):
         """
         Parses the entire subset of seasons required when this object was initialized. This will divide that subset
         of games at the split requested during initialization and extract the features requested. If
@@ -106,37 +93,18 @@ class PredictNextSeason(ReadGames):
             A list of labels indicating the actual outcome of each game in the subset of testing games. Valid options
             are 'H' for home team win or 'A' for away team win
         """
-        averages = dict()
-        training_features = dict()
-        training_labels = np.array([])
         testing_features = dict()
-        testing_labels = list()
-
-        for game in self.sorted_games:
-            self.logger.info(f"Extracting requested features for game {game.code}")
-            training_labels = np.append(training_labels, [self.get_winner(game)])
-            averages.setdefault(game.home_team.name, dict())
-            averages.setdefault(game.away_team.name, dict())
-            for feature in self.features:
-                training_features.setdefault(feature, np.array([]))
-                feature_value = self.map_feature_name_to_actual_value(feature, game)
-                training_features[feature] = np.append(training_features[feature], [feature_value])
-                averages[game.home_team.name].setdefault(feature, 0.0)
-                averages[game.away_team.name].setdefault(feature, 0.0)
-                averages[game.home_team.name][feature] += feature_value
-                averages[game.away_team.name][feature] += feature_value
         for game in self.next_season:
-            testing_labels = np.append(testing_labels, [random.choice(['H', 'A', 'H'])])
             home = game["home"]
             away = game["away"]
             self.logger.info(f"Building dataset for future 2019-2020 NBA game between {home} and {away}")
             try:
-                home_team_dict = averages[home]
+                home_team_dict = self.averages[home]
             except KeyError:
                 self.logger.error(f"Cant find team key name: {home}")
                 exit(1)
             try:
-                away_team_dict = averages[away]
+                away_team_dict = self.averages[away]
             except KeyError:
                 self.logger.error(f"Cant find team key name: {away}")
                 exit(1)
@@ -146,8 +114,7 @@ class PredictNextSeason(ReadGames):
                 away_feature_value = away_team_dict[feature] / len(self.sorted_games)
                 testing_features[feature] = np.append(testing_features[feature],
                                                       [home_feature_value - away_feature_value])
-        self.averages = averages
-        return training_features, training_labels, testing_features, testing_labels
+        return testing_features
 
     def analyze_end_of_season_predictions(self, predictions: list):
         win_tracker = dict()
@@ -166,14 +133,13 @@ class PredictNextSeason(ReadGames):
         for team in win_tracker:
             self.logger.info(f"Predicted {team} record for 2019-2020 NBA Season to be: {win_tracker[team]}-"
                              f"{81 - win_tracker[team]}")
-        east_sorted = [team for team in sorted(win_tracker, key=lambda x: win_tracker[x]) if
+        east_sorted = [team for team in sorted(win_tracker, key=lambda x: win_tracker[x], reverse=True) if
                        team in self.conferences["East"]]
-        west_sorted = [team for team in sorted(win_tracker, key=lambda x: win_tracker[x]) if
+        west_sorted = [team for team in sorted(win_tracker, key=lambda x: win_tracker[x], reverse=True) if
                        team in self.conferences["West"]]
         playoff_teams["East"] = [east_sorted[x - 1] for x in range(1, 9)]
         playoff_teams["West"] = [west_sorted[x - 1] for x in range(1, 9)]
-        return Playoffs(playoff_teams, logger=self.logger, average_performance=self.averages, features=self.features,
-                        sorted_games=self.sorted_games)
+        return Playoffs(playoff_teams, predict_next_season=self)
 
 
 class Round(Enum):
@@ -185,9 +151,8 @@ class Round(Enum):
 
 class Playoffs:
 
-    def __init__(self, playoff_teams: Dict[str, List[str]], average_performance: Dict[str, Dict[str, float]],
-            sorted_games: List, features: List[str], logger):
-        self.logger = logger
+    def __init__(self, playoff_teams: Dict[str, List[str]], predict_next_season: PredictNextSeason):
+        self.logger = logging.getLogger(f"NBAPredictor.{self.__class__.__name__}")
         self.logger.info("2019-2020 NBA PLAYOFFS\n")
         self.logger.info("EASTERN CONFERENCE: ")
         self.seeding = {}
@@ -213,9 +178,9 @@ class Playoffs:
                                                           {playoff_teams["West"][3]: 0, playoff_teams["West"][-4]: 0}]},
                              Round.QUARTERFINALS: {"East": [], "West": []}, Round.SEMIFINALS: {"East": [], "West": []},
                              Round.FINALS: {}}
-        self.sorted_games = sorted_games
-        self.features = features
-        self.averages = average_performance
+        self.sorted_games = predict_next_season.sorted_games
+        self.features = predict_next_season.features
+        self.averages = predict_next_season.averages
         self.current_games = []
         self.current_round = Round.FIRST_ROUND
 
@@ -224,7 +189,6 @@ class Playoffs:
         PLAYOFF_FORMAT = [0, 0, 1, 1, 0, 1, 0]
         games = list()
         testing_features = dict()
-        testing_labels = np.array([])
         for round, bracket in self.playoff_tree.items():
             round_finished = all(all(4 in g.values() for g in matchups) for matchups in
                                  bracket.values()) if round != Round.FINALS else 4 in self.playoff_tree[
@@ -284,7 +248,6 @@ class Playoffs:
         # Build the NumPy data for this round
         self.current_games = games
         for game in games:
-            testing_labels = np.append(testing_labels, [random.choice(['H', 'A', 'H'])])
             home = game["home"]
             away = game["away"]
             self.logger.info(f"Building dataset for future 2019-2020 NBA game between {home} and {away}")
@@ -304,9 +267,8 @@ class Playoffs:
                 away_feature_value = away_team_dict[feature] / len(self.sorted_games)
                 testing_features[feature] = np.append(testing_features[feature],
                                                       [home_feature_value - away_feature_value])
-        if len(testing_labels) > 0:
-            assert all(len(a) == len(testing_labels) for a in testing_features.values())
-            return testing_features, testing_labels
+        if len(testing_features.keys()) > 0:
+            return testing_features
         return False
 
     def record_playoff_results(self, predictions: List):

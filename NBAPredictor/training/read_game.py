@@ -26,12 +26,14 @@ POSSIBLE_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveReboun
                      "BestPlayerSpread", "TeamRecordSpread", "StealSpread", "BlockSpread", "PersonalFoulSpread",
                      "TrueShootingPercentSpread", "ThreePointRateSpread", "FreeThrowRateSpread",
                      "OffensiveRatingSpread", "DefensiveRatingSpread", "AssistToTurnoverSpread",
-                     "StealToTurnoverSpread", "HOBSpread", "ExperienceSpread", "HomeFieldAdvantage"]
+                     "StealToTurnoverSpread", "HOBSpread", "ExperienceSpread", "HomeFieldAdvantage", "PointSpread"]
 
 DEFAULT_FEATURES = ["ReboundSpread", "OffensiveReboundSpread", "DefensiveReboundSpread", "AssistSpread",
                     "TurnoverSpread", "FieldGoalPercentSpread", "ThreePointPercentSpread", "FreeThrowPercentSpread",
                     "FieldGoalsAttemptedSpread", "ThreePointsAttemptedSpread", "FreeThrowsAttemptedSpread",
                     "BestPlayerSpread", "HomeFieldAdvantage"]
+PREDICTION_FEATURES = ["PointSpread", "DefensiveRatingSpread", "PersonalFoulSpread", "TurnoverSpread",
+                       "OffensiveReboundSpread", "FieldGoalsAttemptedSpread"]
 
 
 def determine_best_player_from_team(team: Team) -> Player:
@@ -323,7 +325,7 @@ class ReadGames:
             for s in self.seasons:
                 self.sorted_games.extend(
                     sorted(self.leauge.seasons_dict[s].__iter__(), key=lambda x: re.sub(r"[A-Z]", "", x.code)))
-
+        self.averages = None
         if initialize:
             self.logger.info(f"Size of training set: {self.training_size}, size of testing set: "
                              f"{len(self.sorted_games) - self.training_size} ({split * 100}% split)")
@@ -415,6 +417,7 @@ class ReadGames:
             A list of labels indicating the actual outcome of each game in the subset of testing games. Valid options
             are 'H' for home team win or 'A' for away team win
         """
+        averages = dict()
         training_features = dict()
         training_labels = list()
         testing_features = dict()
@@ -424,10 +427,16 @@ class ReadGames:
             testing_features.setdefault(label, list())
         for x in range(0, self.training_size):
             game = self.sorted_games[x]
+            averages.setdefault(game.away_team.name, dict())
+            averages.setdefault(game.home_team.name, dict())
             self.logger.info(f"Extracting requested features for game {game.code}")
             training_labels.append(self.get_winner(game))
             for feature in self.features:
                 training_features[feature].append(self.map_feature_name_to_actual_value(feature, game))
+                averages[game.away_team.name].setdefault(feature, 0.0)
+                averages[game.home_team.name].setdefault(feature, 0.0)
+                averages[game.away_team.name][feature] += self.map_feature_name_to_actual_value(feature, game)
+                averages[game.away_team.name][feature] += self.map_feature_name_to_actual_value(feature, game)
             if self.normalize_weights:
                 training_features.setdefault("weight", list())
                 normalized_game_value = self.map_feature_name_to_actual_value("TeamRecordSpread", game)
@@ -435,10 +444,16 @@ class ReadGames:
                 training_features["weight"].append(normalized_game_value)
         for x in range(self.training_size + 1, len(self.sorted_games)):
             game = self.sorted_games[x]
+            averages.setdefault(game.away_team.name, dict())
+            averages.setdefault(game.home_team.name, dict())
             self.logger.info(f"Extracting requested features for game {game.code}")
             testing_labels.append(self.get_winner(game))
             for feature in self.features:
                 testing_features[feature].append(self.map_feature_name_to_actual_value(feature, game))
+                averages[game.away_team.name].setdefault(feature, 0.0)
+                averages[game.home_team.name].setdefault(feature, 0.0)
+                averages[game.away_team.name][feature] += self.map_feature_name_to_actual_value(feature, game)
+                averages[game.away_team.name][feature] += self.map_feature_name_to_actual_value(feature, game)
             if self.normalize_weights:
                 testing_features.setdefault("weight", list())
                 normalized_game_value = self.map_feature_name_to_actual_value("TeamRecordSpread", game)
@@ -456,6 +471,7 @@ class ReadGames:
         testing_labels = np.array([label for label in testing_labels])
         self.logger.info(f"Number of games used for training: {len(training_labels)}")
         self.logger.info(f"Number of games used for testing: {len(testing_labels)}")
+        self.averages = averages
         return training_features, training_labels, testing_features, testing_labels
 
     def parse_whole_season_svm_format(self):
@@ -588,6 +604,8 @@ class ReadGames:
             return self.determine_experience_spread(game)
         elif name == "HomeFieldAdvantage":
             return self.determine_home_field_advantage_spread(game)
+        elif name == "PointSpread":
+            return self.determine_point_spread(game)
         else:
             raise RuntimeError(f"{name} is not an implemented or recognized feature name!")
 
@@ -624,6 +642,9 @@ class ReadGames:
         away_team_best_player = determine_best_player_from_team(game.away_team)
         return home_team_best_player.stats.get(PlayerStatTypes.FIC) - away_team_best_player.stats.get(
             PlayerStatTypes.FIC)
+
+    def determine_point_spread(self, game: Game) -> float:
+        return int(game.home_team.scores.get(GamePeriod.TOTAL)) - int(game.away_team.scores.get(GamePeriod.TOTAL))
 
     def determine_home_field_advantage_spread(self, game: Game) -> float:
         """
