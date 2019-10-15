@@ -23,10 +23,10 @@ class ParsedConfigs:
         self.rebuild = True if self.configs["DEFAULT"]["REBUILD"] == "True" else False
         self.league_save = self.configs["DEFAULT"]["LEAGUE_PICKLE_OBJECT"]
         self.nba_json_dir = self.configs["DEFAULT"]["NBA_JSON_GAME_PATH"]
-        self.randomize_nn_shape = bool(self.configs["DEFAULT"]["RANDOMIZE_NN_SHAPE"])
+        self.randomize_nn_shape = True if self.configs["DEFAULT"]["RANDOMIZE_NN_SHAPE"] == "True" else False
 
         self.nn_shape = [int(x) for x in
-                         self.configs["DEFAULT"]["NN_SHAPE"].split()] if self.randomize_nn_shape == "True" else None
+                         self.configs["DEFAULT"]["NN_SHAPE"].split()] if not self.randomize_nn_shape else None
         self.method = self.configs["DEFAULT"]["METHOD"]
         assert self.method in ["DNN", "SVM"]
         self.epochs = int(self.configs["DEFAULT"]["EPOCHS"])

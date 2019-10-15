@@ -76,7 +76,8 @@ def center_values(values: List[float]) -> List[float]:
     """
     try:
         avg = sum(values) / len(values)
-        return [(x - avg) / stdev(values) for x in values]
+        std = stdev(values)
+        return [((x - avg) / std) for x in values]
     except ZeroDivisionError:
         return values
 
@@ -314,7 +315,7 @@ class ReadGames:
         assert all(e in POSSIBLE_FEATURES for e in features)
         assert (0.01 < split < 0.99)
         self.features = features
-
+        self.averages = {}
         if len(self.seasons) == 1:
             self.training_size = round(len(self.leauge.seasons_dict[season]) * split)
             self.sorted_games = sorted(self.leauge.seasons_dict[season].__iter__(),
@@ -325,7 +326,12 @@ class ReadGames:
             for s in self.seasons:
                 self.sorted_games.extend(
                     sorted(self.leauge.seasons_dict[s].__iter__(), key=lambda x: re.sub(r"[A-Z]", "", x.code)))
-        self.averages = None
+        self.number_of_games_played_per_team = dict()
+        for g in self.sorted_games:
+            self.number_of_games_played_per_team.setdefault(g.home_team.name, 0)
+            self.number_of_games_played_per_team.setdefault(g.away_team.name, 0)
+            self.number_of_games_played_per_team[g.home_team.name] += 1
+            self.number_of_games_played_per_team[g.away_team.name] += 1
         if initialize:
             self.logger.info(f"Size of training set: {self.training_size}, size of testing set: "
                              f"{len(self.sorted_games) - self.training_size} ({split * 100}% split)")
@@ -471,7 +477,10 @@ class ReadGames:
         testing_labels = np.array([label for label in testing_labels])
         self.logger.info(f"Number of games used for training: {len(training_labels)}")
         self.logger.info(f"Number of games used for testing: {len(testing_labels)}")
-        self.averages = averages
+        for team, features in averages.items():
+            self.averages[team] = {key: (value / self.number_of_games_played_per_team[team]) for key, value in
+                                   features.items()}
+
         return training_features, training_labels, testing_features, testing_labels
 
     def parse_whole_season_svm_format(self):

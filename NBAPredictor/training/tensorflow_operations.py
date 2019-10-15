@@ -131,10 +131,6 @@ class TensorflowOperations:
         self.model_dir = model_dir
         self.normalize_weights = normalize_weights
         self.predict_next_season = predict_next_season
-        if self.predict_next_season and self.num_epochs > 1:
-            self.logger.info(
-                f"Predict Next Season mode can run only for one epoch. Overriding value of {self.num_epochs}")
-            self.num_epochs = 1
         if self.mode == "SVM":
             self.parsed_season = ReadGames(self.leauge, season, split, cache_dir, features, svm_compat=True,
                                            normalize_weights=self.normalize_weights, cache=cache_numpy_structures)
@@ -201,7 +197,7 @@ class TensorflowOperations:
                                                   label_vocabulary=['H', 'A'],
                                                   optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
                                                       learning_rate=self.learning_rate,
-                                                      l1_regularization_strength=0.01))
+                                                      l1_regularization_strength=0.001))
         elif self.mode == "SVM":
             return svm.SVC(kernel='rbf')
         else:
@@ -221,23 +217,24 @@ class TensorflowOperations:
                 for x in range(0, self.num_epochs):
                     self.logger.info(f"Running instance #{x + 1}")
                     self.train()
-                    acc = self.evaluate()
-                    self.logger.info(f"Accuracy: {acc * 100}")
+                    self.evaluate()
                     self.get_predictions()
             else:
                 self.logger.info(f"Predicting NBA Season for 2019-2020")
-                self.train()
-                acc = self.evaluate()
-                self.logger.info(f"Accuracy: {acc * 100}")
-                playoffs: Playoffs = self.get_predictions()
-                while playoffs.generate_test_data_for_playoffs():
-                    testing_features = playoffs.generate_test_data_for_playoffs()
-                    self.predict_input_function = tf.estimator.inputs.numpy_input_fn(x=testing_features, num_epochs=1,
-                                                                                     shuffle=False)
-                    predictions = list(self.model.predict(input_fn=self.predict_input_function))
-                    playoffs.record_playoff_results(predictions)
-                playoffs.log_playoff_results()
-                time.sleep(8)
+                for x in range(0, self.num_epochs):
+                    self.logger.info(f"Running instance #{x + 1}")
+                    self.train()
+                    acc = self.evaluate()
+                    self.logger.info(f"Accuracy: {float(acc['accuracy']) * 100}")
+                    playoffs: Playoffs = self.get_predictions()
+                    while playoffs.generate_test_data_for_playoffs():
+                        testing_features = playoffs.generate_test_data_for_playoffs()
+                        self.predict_input_function = tf.estimator.inputs.numpy_input_fn(x=testing_features,
+                                                                                         num_epochs=1, shuffle=False)
+                        predictions = list(self.model.predict(input_fn=self.predict_input_function))
+                        playoffs.record_playoff_results(predictions)
+                    playoffs.log_playoff_results()
+                    time.sleep(8)
         elif self.mode == "SVM":
             for x in range(0, self.num_epochs):
                 self.logger.info(f"Running instance #{x + 1}")
@@ -257,7 +254,7 @@ class TensorflowOperations:
         None
         """
         if self.mode == "DNN":
-            self.model.train(input_fn=self.train_input_function, steps=100)
+            self.model.train(input_fn=self.train_input_function, steps=10)
         elif self.mode == "SVM":
             self.model.fit(self.parsed_season.training_features, self.parsed_season.training_labels)
         else:
