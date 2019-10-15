@@ -7,7 +7,7 @@ from typing import List, Union
 import tensorflow as tf
 from sklearn import svm
 
-tf.logging.set_verbosity(tf.logging.ERROR)
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 from league import League
 from predictions import Predictions
